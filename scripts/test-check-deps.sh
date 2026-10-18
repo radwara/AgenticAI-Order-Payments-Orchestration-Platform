@@ -43,7 +43,7 @@ mkdiff() {
 }
 gomod() { printf 'module example.com/svc\n\ngo 1.22\n\nrequire (\n\tgithub.com/old/dep v1.0.0\n\t%s\n)\n' "$1" >"$REPO/svc/go.mod"; }
 
-gomod 'github.com/new/dep v0.3.0 // indirect'; mkdiff added
+gomod 'github.com/new/dep v0.3.0'; mkdiff added
 expect "dependency added but not in ticket -> fail" 1 'github.com/new/dep' -- deps added none
 expect "dependency named in ticket -> pass" 0 'deps-check ok' -- deps added allow
 gomod 'github.com/other/dep v0.3.0'; mkdiff other
@@ -54,7 +54,28 @@ printf 'module example.com/svc\n\ngo 1.22\n\nrequire github.com/old/dep v1.2.0\n
 printf 'github.com/old/dep v1.2.0 h1:ccc=\n' >"$REPO/svc/go.sum"; mkdiff bump
 expect "version bump of an existing module -> pass" 0 'deps-check ok' -- deps bump none
 printf 'github.com/old/dep v1.0.0 h1:aaa=\ngithub.com/sneaky/mod v1.0.0 h1:zzz=\n' >"$REPO/svc/go.sum"; mkdiff gosum
-expect "go.sum gaining a module not in ticket -> fail" 1 'github.com/sneaky/mod' -- deps gosum allow
+expect "go.sum gaining a transitive module is ignored" 0 'deps-check ok' -- deps gosum allow
+gomod 'github.com/trans/dep v0.3.0 // indirect'; mkdiff indirect
+expect "a new // indirect requirement is ignored" 0 'deps-check ok' -- deps indirect none
+printf 'module example.com/svc\n\ngo 1.22\n\nrequire (\n\tgithub.com/old/dep v1.0.0\n\tgithub.com/trans/dep v0.3.0 // indirect\n)\n' >"$REPO/svc/go.mod"
+git -C "$REPO" add -A
+git -C "$REPO" commit -qm indirect
+BASE=$(git -C "$REPO" rev-parse HEAD)
+gomod 'github.com/trans/dep v0.3.0'; mkdiff promoted
+expect "indirect promoted to direct and not named -> fail" 1 'github.com/trans/dep' -- deps promoted none
+git -C "$REPO" reset -q --hard HEAD~1
+BASE=$(git -C "$REPO" rev-parse HEAD)
+printf 'module example.com/svc\n\ngo 1.22\n\nrequire github.com/old/dep v1.0.0\n\nreplace github.com/old/dep => github.com/evil/fork v1.0.0\n' >"$REPO/svc/go.mod"; mkdiff remote
+expect "replace to a remote module not in ticket -> fail" 1 'github.com/evil/fork' -- deps remote none
+
+# realistic service: grpc + pgx with hundreds of transitive go.sum lines
+{ printf 'module example.com/svc\n\ngo 1.22\n\nrequire (\n\tgithub.com/old/dep v1.0.0\n\tgoogle.golang.org/grpc v1.70.0\n\tgithub.com/jackc/pgx/v5 v5.7.2\n)\n\nrequire (\n'
+  awk 'BEGIN { for (i = 0; i < 40; i++) printf "\tgolang.org/x/mod%d v0.%d.0 // indirect\n", i, i }'; printf ')\n'; } >"$REPO/svc/go.mod"
+awk 'BEGIN { for (i = 0; i < 400; i++) printf "golang.org/x/mod%d v0.%d.0 h1:a%d=\ngolang.org/x/mod%d v0.%d.0/go.mod h1:b%d=\n", i, i, i, i, i, i }' >>"$REPO/svc/go.sum"; mkdiff svc
+printf '## Constraints\nAdd `google.golang.org/grpc` and `github.com/jackc/pgx/v5`.\n' >"$TMP/grpcpgx.md"
+printf '## Constraints\nAdd `google.golang.org/grpc`.\n' >"$TMP/grpconly.md"
+expect "service adding grpc + pgx with 800 go.sum lines, both named -> pass" 0 'deps-check ok' -- deps svc grpcpgx
+expect "an unnamed direct requirement (pgx) -> fail" 1 'github.com/jackc/pgx/v5' -- deps svc grpconly
 printf 'module example.com/svc\n\ngo 1.22\n\nrequire github.com/old/dep v1.0.0\n\nreplace github.com/old/dep => ../local\n' >"$REPO/svc/go.mod"; mkdiff local
 expect "replace to a local path -> pass" 0 'deps-check ok' -- deps local none
 

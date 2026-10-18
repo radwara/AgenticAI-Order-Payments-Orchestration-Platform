@@ -1,11 +1,13 @@
 #!/bin/sh
 # Mechanical guard-rail checks on a change (agents/guardrails.md). POSIX sh plus python3 stdlib.
 #   check-deps.sh deps <diff-file> <issue-body-file> | deps --pr <N> --base <sha>
-#       Fails when go.mod, go.sum or pom.xml gain a coordinate (Go module path; Maven
+#       Fails when go.mod or pom.xml gain a coordinate (Go module path; Maven
 #       artifactId in <dependency>/<plugin>/<parent>/<extension>) that the linked
 #       ticket's "Constraints" does not name as a whole token. The diff needs full
 #       context (git diff --unified=100000): "gain" = in the new file, not the old one,
-#       so version bumps do not count. New transitive go.sum modules must be named too.
+#       so version bumps do not count. Go: only DIRECT go.mod requirements (and remote
+#       replace targets) count; "// indirect" lines and go.sum (transitive) are ignored,
+#       but promoting an indirect module to direct gains it.
 #       --pr reuses check-scope.sh for the ticket link/approval checks via a gh wrapper.
 #   check-deps.sh size <numstat-file>|--base <sha> [limit]   default limit 600; lockfiles
 #       (go.sum, *.lock, package-lock.json...) and header-verified generated files are
@@ -77,17 +79,20 @@ def files(diff):  # (path, old_lines, new_lines) per file of a full-context diff
         elif raw.startswith(" "): cur["old"].append(raw[1:]); cur["new"].append(raw[1:])
     if cur: yield cur
 
-def go_coords(lines, is_sum):
-    out = set()
+def go_coords(lines):  # DIRECT requirements and remote replace targets of a go.mod; "// indirect" lines are transitive
+    out, block = set(), None
     for line in lines:
-        toks = line.split("//")[0].split()
-        if toks[:1] and toks[0] in ("module", "go", "toolchain", "godebug", "retract"): continue
-        if toks[:1] and toks[0] in ("require", "replace", "exclude"): toks = toks[1:]
-        if not toks or toks[-1] == "(": continue
-        found = toks[:1]
-        if not is_sum and "=>" in toks:  # replace: the target counts unless it is a local path
-            found += [t for t in toks[toks.index("=>") + 1:][:1] if not t.startswith((".", "/"))]
-        out.update(t for t in found if "/" in t or "." in t)
+        code, _, comment = line.partition("//")
+        toks = code.split()
+        if not toks: continue
+        if toks[0] == ")": block = None; continue
+        if toks[0] in ("require", "replace") and toks[1:2] == ["("]: block = toks[0]; continue
+        if toks[0] in ("require", "replace"): kind, toks = toks[0], toks[1:]
+        elif block: kind = block
+        else: continue
+        if kind == "require" and not comment.strip().startswith("indirect") and toks: out.add(toks[0])
+        if kind == "replace" and "=>" in toks:  # the target counts unless it is a local path
+            out.update(t for t in toks[toks.index("=>") + 1:][:1] if not t.startswith((".", "/")))
     return out
 
 def pom_coords(lines):  # groupId:artifactId of every dependency/plugin/parent/extension, via a real XML parser
@@ -119,7 +124,8 @@ mentioned = lambda c: re.search(r"(?<![A-Za-z0-9._/-])" + re.escape(c) + r"(?![A
 bad = []
 for f in files(sys.argv[1]):
     base = f["path"].rsplit("/", 1)[-1]
-    if base in ("go.mod", "go.sum"): gained = go_coords(f["new"], base == "go.sum") - go_coords(f["old"], base == "go.sum")
+    if base == "go.sum": continue  # transitive hashes; go.mod's direct requirements are the dependencies
+    if base == "go.mod": gained = go_coords(f["new"]) - go_coords(f["old"])
     elif base == "pom.xml": gained = pom_coords(f["new"]) - pom_coords(f["old"])
     else: continue
     bad += [(f["path"], c) for c in sorted(gained) if not mentioned(c)]
