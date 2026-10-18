@@ -17,7 +17,8 @@ build test lint:
 	for dir in $(MODULE_DIRS); do \
 	  for mod in $$dir/*/; do \
 	    [ -f "$${mod}Makefile" ] || continue; \
-	    if ! $(MAKE) -n -C "$$mod" $@ >/dev/null 2>&1; then \
+	    out=$$($(MAKE) -n -C "$$mod" $@ 2>&1); rc=$$?; \
+	    if [ $$rc -ne 0 ] && printf '%s\n' "$$out" | grep -Eq "No rule to make target .$@."; then \
 	      echo "skip $${mod%/}: no '$@' target"; continue; \
 	    fi; \
 	    echo "==> $@ $${mod%/}"; \

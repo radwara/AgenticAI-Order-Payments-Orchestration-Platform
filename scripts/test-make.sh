@@ -46,6 +46,37 @@ else
   fail "module without Makefile is a no-op"
 fi
 
+# Module Makefile defining only `build:` is skipped for test/lint (R1-02).
+T1D="$TMP/onlybuild"
+fresh_tree "$T1D"
+mkdir -p "$T1D/services/m"
+printf 'build:\n\t@true\n' > "$T1D/services/m/Makefile"
+if (cd "$T1D" && make build test lint >/dev/null 2>&1); then
+  pass "module lacking a target is skipped for that target"
+else
+  fail "module lacking a target is skipped for that target"
+fi
+
+# Broken module Makefiles must fail, never be skipped (R1-01).
+T1E="$TMP/broken-syntax"
+fresh_tree "$T1E"
+mkdir -p "$T1E/services/a"
+printf 'test:\n\t@true\nthis is not valid make\n' > "$T1E/services/a/Makefile"
+if (cd "$T1E" && make test >/dev/null 2>&1); then
+  fail "module Makefile with syntax error fails make test"
+else
+  pass "module Makefile with syntax error fails make test"
+fi
+T1F="$TMP/broken-include"
+fresh_tree "$T1F"
+mkdir -p "$T1F/services/a"
+printf 'include nonexist.mk\ntest:\n\t@true\n' > "$T1F/services/a/Makefile"
+if (cd "$T1F" && make test >/dev/null 2>&1); then
+  fail "module Makefile with missing include fails make test"
+else
+  pass "module Makefile with missing include fails make test"
+fi
+
 # AC2: a failing test target in services/x/Makefile makes make test fail.
 T2="$TMP/failing"
 fresh_tree "$T2"
