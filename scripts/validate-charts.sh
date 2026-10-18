@@ -9,7 +9,7 @@ set -euo pipefail
 
 # Pinned tool versions. The script fails if the installed tools differ, so CI and laptops agree.
 HELM_MAJOR="3"
-KUBECONFORM_VERSION="v0.6.7"
+KUBECONFORM_VERSION="v0.8.0"
 KUBERNETES_VERSION="1.29.0"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
