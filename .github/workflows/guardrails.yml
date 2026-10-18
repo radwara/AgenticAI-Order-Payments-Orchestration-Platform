@@ -1,4 +1,6 @@
 name: guardrails
+# diff-size and the coverage gate steps are REPORT-ONLY (continue-on-error) until T-028
+# (#48) makes them skip header-verified generated files; dep-diff is enforcing.
 # Mechanical guard rails from agents/guardrails.md. Every job runs on every pull
 # request (no path filter) so each can be a required status check on main; the
 # coverage job decides internally which modules changed and passes when none did.
@@ -32,6 +34,7 @@ jobs:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
       - name: Diff of at most 600 changed lines (lockfiles and generated files excluded)
+        continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: sh scripts/check-deps.sh size --base "$BASE_SHA" 600
@@ -77,6 +80,7 @@ jobs:
       - name: Self-test the coverage gate
         run: sh scripts/test-coverage-gate.sh
       - name: Go changed lines at or above 80% covered
+        continue-on-error: true
         if: steps.detect.outputs.go != ''
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -90,6 +94,7 @@ jobs:
           done
           diff-cover lcov.info --compare-branch "$BASE_SHA" --fail-under=80
       - name: Java changed lines at or above 80% covered (JaCoCo)
+        continue-on-error: true
         if: steps.detect.outputs.java != ''
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

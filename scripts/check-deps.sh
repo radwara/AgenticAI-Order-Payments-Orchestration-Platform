@@ -37,8 +37,9 @@ WRAP
     set -- "$TMPD/deps.diff" "$TMPD/body.md"
   fi
   [ -r "${1:-}" ] && [ -r "${2:-}" ] || die "usage: deps <diff-file> <issue-body-file>"
-  python3 - "$1" "$2" <<'PY'
+  python3 -I - "$1" "$2" <<'PY'
 import re, sys
+import xml.etree.ElementTree as ET
 
 def files(diff):  # (path, old_lines, new_lines) per file of a full-context diff
     cur = None
@@ -66,16 +67,22 @@ def go_coords(lines, is_sum):
         out.update(t for t in found if "/" in t or "." in t)
     return out
 
-def pom_coords(lines):
-    out, depth = set(), 0
-    for line in lines:
-        for m in re.finditer(r"<(/?)(\w+)[^>]*?>(?:([^<]*)</\2>)?", line):
-            closing, tag, text = m.groups()
-            if tag in ("dependency", "plugin", "parent", "extension") and not text:
-                depth = max(depth + (-1 if closing else 1), 0)
-            elif tag == "artifactId" and depth and text:
-                out.add(text.strip())
+def pom_coords(lines):  # groupId:artifactId of every dependency/plugin/parent/extension, via a real XML parser
+    src = "\n".join(lines)
+    if not src.strip(): return set()
+    if "<!DOCTYPE" in src or "<!ENTITY" in src: sys.exit("deps-check failed: pom.xml with DOCTYPE/ENTITY is rejected")
+    try: root = ET.fromstring(src)
+    except ET.ParseError as e: sys.exit(f"deps-check failed: pom.xml is not valid XML ({e})")
+    out = set()
+    for el in root.iter():
+        tag = el.tag.rsplit("}", 1)[-1]
+        if tag not in ("dependency", "plugin", "parent", "extension"): continue
+        kid = {k.tag.rsplit("}", 1)[-1]: (k.text or "").strip() for k in el}
+        if kid.get("artifactId"):
+            default = "org.apache.maven.plugins" if tag == "plugin" else "?"
+            out.add((kid.get("groupId") or default) + ":" + kid["artifactId"])
     return out
+
 
 text, grab = [], False  # the Constraints section of the ticket
 for line in open(sys.argv[2], encoding="utf-8", errors="replace").read().replace("\r", "").split("\n"):

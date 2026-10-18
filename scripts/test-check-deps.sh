@@ -31,7 +31,7 @@ printf "$POM_HEAD  </dependencies>\n</project>\n" >"$REPO/pom.xml"
 git -C "$REPO" add -A
 git -C "$REPO" commit -qm base
 BASE=$(git -C "$REPO" rev-parse HEAD)
-printf '## Constraints\nOnly `github.com/new/dep` and the `new-lib` artifact may be added.\n\n## Out of scope\nNot `github.com/other/dep`.\n' >"$TMP/allow.md"
+printf '## Constraints\nOnly `github.com/new/dep` and the `org.new:new-lib` artifact may be added.\n\n## Out of scope\nNot `github.com/other/dep`.\n' >"$TMP/allow.md"
 printf '## Constraints\nNo new dependencies.\n' >"$TMP/none.md"
 
 # mkdiff NAME: save the working-tree change as a full-context diff, then reset the repo.
@@ -58,9 +58,21 @@ expect "go.sum gaining a module not in ticket -> fail" 1 'github.com/sneaky/mod'
 printf 'module example.com/svc\n\ngo 1.22\n\nrequire github.com/old/dep v1.0.0\n\nreplace github.com/old/dep => ../local\n' >"$REPO/svc/go.mod"; mkdiff local
 expect "replace to a local path -> pass" 0 'deps-check ok' -- deps local none
 
-printf "$POM_HEAD    <dependency><groupId>org.new</groupId><artifactId>new-lib</artifactId></dependency>\n    <dependency>\n      <artifactId>evil-lib</artifactId>\n    </dependency>\n  </dependencies>\n</project>\n" >"$REPO/pom.xml"; mkdiff pom
-expect "pom: unapproved artifact -> fail" 1 'evil-lib' -- deps pom allow
+pomadd() { printf "$POM_HEAD%s\n  </dependencies>\n</project>\n" "$1" >"$REPO/pom.xml"; mkdiff "$2"; }
+pomadd '<dependency><groupId>org.new</groupId><artifactId>new-lib</artifactId></dependency>
+<dependency><groupId>org.evil</groupId><artifactId>evil-lib</artifactId></dependency>' pom
+expect "pom: unapproved artifact -> fail" 1 'org.evil:evil-lib' -- deps pom allow
 deps pom allow 2>&1 | grep -q 'new-lib' && fail "pom: named artifact must not be reported" || pass "pom: named artifact is not reported"
+pomadd '<dependency><groupId>org.evil</groupId><artifactId>
+  evil-lib
+</artifactId></dependency>' split
+expect "pom: artifactId split over lines is still seen" 1 'org.evil:evil-lib' -- deps split none
+pomadd '<dependency><!-- </dependency> --><groupId>org.evil</groupId><artifactId>evil-lib</artifactId></dependency>' comment
+expect "pom: XML comment trick is still seen" 1 'org.evil:evil-lib' -- deps comment none
+pomadd '<dependency><groupId>evil.group</groupId><artifactId>old-lib</artifactId></dependency>' group
+expect "pom: existing artifactId under another groupId -> fail" 1 'evil.group:old-lib' -- deps group none
+pomadd '<!DOCTYPE project [<!ENTITY x "y">]><dependency/>' doctype
+expect "pom: DOCTYPE/ENTITY is rejected" 1 'DOCTYPE' -- deps doctype allow
 printf "$POM_HEAD  </dependencies>\n</project>\n" | sed 's/svc-root/renamed/; s/1.0</2.0</' >"$REPO/pom.xml"; mkdiff pombump
 expect "pom: project rename and version bump -> pass" 0 'deps-check ok' -- deps pombump none
 mkdir -p "$REPO/new"

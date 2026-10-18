@@ -8,17 +8,16 @@
 # approval, stale approvals dismissed, linear history, conversation resolution, no
 # force-push or deletion; enforce_admins false (agents must never bypass).
 #
-# Required checks run on EVERY pull request: secrets-scan, scope-check (ci.yml);
-# dep-diff, diff-size, coverage (guardrails.yml). The path-filtered `go`/`java` jobs
-# are NOT required: when a PR touches no module they are skipped, a required check that
-# never reports blocks the merge, and matrix jobs get per-module names. `coverage` always
-# runs and fails on uncovered changed lines in any changed Go/Java module. CodeQL is
-# not required either (it only analyses languages that have code). Apply this after
-# the workflows exist on main, or the new checks stay "expected" on every PR.
+# Required checks (all pinned to GitHub Actions, app_id 15368, as live: a bare "contexts"
+# list would drop the pin and let any status-posting app satisfy them): secrets-scan and
+# scope-check (ci.yml), dep-diff (guardrails.yml). Not required: the path-filtered `go`/`java`
+# jobs (skipped job = never-reporting required check), and diff-size/coverage, which become
+# required after T-028 (header-verified generated files). Apply only after this merges, so
+# dep-diff exists on main, and always with --dry-run first.
 set -eu
 
 BRANCH=${BRANCH:-main}
-CHECKS=${CHECKS:-"secrets-scan scope-check dep-diff diff-size coverage"}
+CHECKS=${CHECKS:-"secrets-scan scope-check dep-diff"}
 GH=${GH:-gh}
 REPO=${REPO:-'{owner}/{repo}'} # gh fills the placeholders from the current repository
 ENDPOINT="repos/$REPO/branches/$BRANCH/protection"
@@ -30,11 +29,11 @@ case "${1:-}" in
 esac
 
 contexts=""
-for c in $CHECKS; do contexts="${contexts:+$contexts, }\"$c\""; done
+for c in $CHECKS; do contexts="${contexts:+$contexts, }{\"context\": \"$c\", \"app_id\": 15368}"; done
 payload() {
   cat <<EOF
 {
-  "required_status_checks": {"strict": false, "contexts": [$contexts]},
+  "required_status_checks": {"strict": false, "checks": [$contexts]},
   "enforce_admins": false,
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,

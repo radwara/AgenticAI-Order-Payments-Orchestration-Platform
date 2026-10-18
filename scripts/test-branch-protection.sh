@@ -22,11 +22,11 @@ OUT1=$(run sh "$SCRIPT" --dry-run)
 printf '%s\n' "$OUT1" | sed 1d >"$TMP/payload.json"
 printf '%s\n' "$OUT1" | head -1 | grep -q '^PUT repos/.*/branches/main/protection$' && pass "dry-run names the PUT endpoint" || fail "endpoint line missing"
 
-# Expected = the live protection recorded in docs/agent-identities.md + the new checks (go/java not required).
+# Expected = the live protection recorded in docs/agent-identities.md + the new checks, app-pinned (go/java not required).
 python3 - "$TMP/payload.json" <<'PY' && pass "dry-run payload is exactly the expected protection" || fail "payload differs from expected"
 import json, sys
 want = {
-    "required_status_checks": {"strict": False, "contexts": ["secrets-scan", "scope-check", "dep-diff", "diff-size", "coverage"]},
+    "required_status_checks": {"strict": False, "checks": [{"context": c, "app_id": 15368} for c in ("secrets-scan", "scope-check", "dep-diff")]},
     "enforce_admins": False,
     "required_pull_request_reviews": {"dismiss_stale_reviews": True, "require_code_owner_reviews": True,
                                       "required_approving_review_count": 1, "require_last_push_approval": False},
@@ -36,6 +36,26 @@ want = {
 }
 sys.exit(0 if json.load(open(sys.argv[1])) == want else 1)
 PY
+
+# Against the live protection (needs an admin token; skipped when gh cannot read it, e.g. in CI):
+# identical except for the added checks.
+if LIVE=$(gh api repos/{owner}/{repo}/branches/main/protection 2>/dev/null) && [ -n "$LIVE" ]; then
+  printf '%s' "$LIVE" >"$TMP/live.json"
+  python3 - "$TMP/live.json" "$TMP/payload.json" <<'PY' && pass "payload equals live protection except added checks" || fail "payload differs from live protection"
+import json, sys
+live, mine = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
+rv = {k: v for k, v in live["required_pull_request_reviews"].items() if k != "url"}
+got = {"required_status_checks": {"strict": live["required_status_checks"]["strict"],
+       "checks": [{"context": c["context"], "app_id": c["app_id"]} for c in live["required_status_checks"]["checks"]]},
+       "required_pull_request_reviews": rv, "restrictions": None}
+for k in ("enforce_admins", "required_linear_history", "allow_force_pushes", "allow_deletions", "block_creations",
+          "required_conversation_resolution", "lock_branch", "allow_fork_syncing"):
+    got[k] = live[k]["enabled"]
+extra = [c for c in mine["required_status_checks"]["checks"] if c not in got["required_status_checks"]["checks"]]
+mine["required_status_checks"]["checks"] = [c for c in mine["required_status_checks"]["checks"] if c not in extra]
+sys.exit(0 if got == mine else 1)
+PY
+else echo "SKIP: live protection not readable with this token"; fi
 
 run sh "$SCRIPT" >/dev/null; run sh "$SCRIPT" >/dev/null
 [ "$(grep -c '^api --method PUT ' "$TMP/log.args")" = 2 ] && pass "each apply is one PUT" || fail "unexpected gh calls: $(cat "$TMP/log.args")"
