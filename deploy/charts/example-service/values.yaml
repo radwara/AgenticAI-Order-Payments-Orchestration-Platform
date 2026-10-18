@@ -62,10 +62,13 @@ probes:
 terminationGracePeriodSeconds: 30
 preStopCommand: ["sleep", "5"]
 
+# Zone spread is a HARD constraint by default (PRD: spread across zones): replicas that cannot be
+# placed in a different zone stay Pending rather than piling into one zone. On a cluster with
+# fewer zones than replicas, override per constraint with whenUnsatisfiable: ScheduleAnyway (soft).
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
-    whenUnsatisfiable: ScheduleAnyway
+    whenUnsatisfiable: DoNotSchedule
 
 pdb:
   maxUnavailable: 1

@@ -1,4 +1,7 @@
 {{- define "service-base.deployment" -}}
+{{- include "service-base.validateSecurity" . -}}
+{{- $probes := default dict .Values.probes -}}
+{{- $defaultProbes := fromYaml (include "service-base.defaultProbes" .) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -48,18 +51,18 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           startupProbe:
-            {{- toYaml .Values.probes.startup | nindent 12 }}
+            {{- toYaml (default $defaultProbes.startup $probes.startup) | nindent 12 }}
           livenessProbe:
-            {{- toYaml .Values.probes.liveness | nindent 12 }}
+            {{- toYaml (default $defaultProbes.liveness $probes.liveness) | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.probes.readiness | nindent 12 }}
+            {{- toYaml (default $defaultProbes.readiness $probes.readiness) | nindent 12 }}
           lifecycle:
             preStop:
               exec:
                 command:
                   {{- toYaml .Values.preStopCommand | nindent 18 }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml (default (fromYaml (include "service-base.defaultResources" .)) .Values.resources) | nindent 12 }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -77,7 +80,7 @@ spec:
         {{- range . }}
         - maxSkew: {{ .maxSkew }}
           topologyKey: {{ .topologyKey }}
-          whenUnsatisfiable: {{ .whenUnsatisfiable }}
+          whenUnsatisfiable: {{ default "DoNotSchedule" .whenUnsatisfiable }}
           labelSelector:
             matchLabels:
               {{- include "service-base.selectorLabels" $ | nindent 14 }}
