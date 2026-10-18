@@ -1,3 +1,33 @@
 .DS_Store
 *.log
 .env
+
+# Go
+*.exe
+*.test
+*.out
+*.prof
+vendor/
+go.work
+go.work.sum
+bin/
+coverage.txt
+
+# Java / Maven / Gradle
+target/
+build/
+.gradle/
+*.class
+*.jar
+*.war
+hs_err_pid*
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+*.swp
+*~
