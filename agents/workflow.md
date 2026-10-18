@@ -1,6 +1,6 @@
 # Agentic workflow – state machine
 
-The code agent and review agent are separate actors with separate identities that check each other's work; see [`actors.md`](actors.md).
+The ticket, code and review agents are separate actors with separate identities that check each other's work; see [`actors.md`](actors.md).
 
 Ticket state is the single `status:*` label on the GitHub issue (and mirrored on the PR). Exactly one `status:*` label at a time.
 
@@ -29,6 +29,7 @@ Ticket state is the single `status:*` label on the GitHub issue (and mirrored on
 | Action | Human | Code agent | Review agent |
 |---|---|---|---|
 | Apply `status:approved` | yes | **no** | **no** |
+| Create tickets (issues) | yes | no | no |  <!-- ticket agent: create only, see ticket-agent.md -->
 | Push to `agent/*` branches | yes | yes | no |
 | Push to `main` | no (PR only) | no | no |
 | Comment on PR | yes | yes (replies) | yes (findings) |

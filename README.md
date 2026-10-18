@@ -26,14 +26,14 @@ stateDiagram-v2
 
 | Stage | Who | Rule |
 |---|---|---|
-| Spec → ticket | Human + agent | Every ticket states why, what, constraints, acceptance tests, files in scope (`.github/ISSUE_TEMPLATE/ticket.yml`) |
+| Spec → ticket | Ticket agent (reviewed by human) | Every ticket states why, what, constraints, acceptance tests, files in scope (`.github/ISSUE_TEMPLATE/ticket.yml`) |
 | **Ticket approval** | **Human** | Label `status:approved` is applied by a human only |
 | Code | Code agent | Bound by [`agents/guardrails.md`](agents/guardrails.md) and [`agents/code-agent.md`](agents/code-agent.md) |
 | Review | Review agent | Independent context; findings carry confidence; see [`agents/review-agent.md`](agents/review-agent.md) |
 | Fix | Code agent | Verifies each finding, then accepts (fixes) or disputes with evidence; at most 3 review rounds |
 | **Merge** | **Human** | Agents have no merge rights; `main` is branch-protected |
 
-The code agent and review agent are **separate actors with separate identities, credentials and sessions** that review each other's work ([`agents/actors.md`](agents/actors.md)). Full flow: [`agents/workflow.md`](agents/workflow.md).
+The ticket agent, code agent and review agent are **separate actors with separate identities, credentials and sessions**; the code and review agents review each other's work ([`agents/actors.md`](agents/actors.md)). Full flow: [`agents/workflow.md`](agents/workflow.md).
 
 ## Repo map
 
@@ -41,7 +41,7 @@ The code agent and review agent are **separate actors with separate identities, 
 |---|---|
 | `specs/` | One spec per service/area, derived from the PRD, with requirement IDs |
 | `tickets/phase-1/` | Ticket drafts (source of truth for the GitHub issues) |
-| `agents/` | Code agent, review agent, guard rails, workflow state machine |
+| `agents/` | Ticket agent, code agent, review agent, guard rails, workflow state machine |
 | `.github/` | Ticket and PR templates, CI, labels, CODEOWNERS |
 | `scripts/` | Label and issue bootstrap |
 | `docs/` | Roadmap and decisions |
