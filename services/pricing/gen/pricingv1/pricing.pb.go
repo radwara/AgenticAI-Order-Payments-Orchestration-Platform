@@ -25,9 +25,10 @@ type LineItem struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Sku      string                 `protobuf:"bytes,1,opt,name=sku,proto3" json:"sku,omitempty"`
 	Quantity int64                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	// Optional assertion of the list price in minor units; 0 means unset.
-	// When set it must equal the price list price.
-	UnitPriceMinor int64 `protobuf:"varint,3,opt,name=unit_price_minor,json=unitPriceMinor,proto3" json:"unit_price_minor,omitempty"`
+	// Optional assertion of the list price in minor units. Unset means no
+	// assertion; 0 is a legitimate asserted price. When set it must equal the
+	// price list price.
+	UnitPriceMinor *int64 `protobuf:"varint,3,opt,name=unit_price_minor,json=unitPriceMinor,proto3,oneof" json:"unit_price_minor,omitempty"`
 	// Optional ISO-4217 code; empty means unset. When set it must equal the
 	// price list currency.
 	Currency      string `protobuf:"bytes,4,opt,name=currency,proto3" json:"currency,omitempty"`
@@ -80,8 +81,8 @@ func (x *LineItem) GetQuantity() int64 {
 }
 
 func (x *LineItem) GetUnitPriceMinor() int64 {
-	if x != nil {
-		return x.UnitPriceMinor
+	if x != nil && x.UnitPriceMinor != nil {
+		return *x.UnitPriceMinor
 	}
 	return 0
 }
@@ -382,12 +383,13 @@ var File_v1_pricing_proto protoreflect.FileDescriptor
 const file_v1_pricing_proto_rawDesc = "" +
 	"\n" +
 	"\x10v1/pricing.proto\x12\n" +
-	"pricing.v1\"~\n" +
+	"pricing.v1\"\x98\x01\n" +
 	"\bLineItem\x12\x10\n" +
 	"\x03sku\x18\x01 \x01(\tR\x03sku\x12\x1a\n" +
-	"\bquantity\x18\x02 \x01(\x03R\bquantity\x12(\n" +
-	"\x10unit_price_minor\x18\x03 \x01(\x03R\x0eunitPriceMinor\x12\x1a\n" +
-	"\bcurrency\x18\x04 \x01(\tR\bcurrency\"\x9e\x01\n" +
+	"\bquantity\x18\x02 \x01(\x03R\bquantity\x12-\n" +
+	"\x10unit_price_minor\x18\x03 \x01(\x03H\x00R\x0eunitPriceMinor\x88\x01\x01\x12\x1a\n" +
+	"\bcurrency\x18\x04 \x01(\tR\bcurrencyB\x13\n" +
+	"\x11_unit_price_minor\"\x9e\x01\n" +
 	"\fQuoteRequest\x12*\n" +
 	"\x05items\x18\x01 \x03(\v2\x14.pricing.v1.LineItemR\x05items\x12,\n" +
 	"\x12price_list_version\x18\x02 \x01(\tR\x10priceListVersion\x124\n" +
@@ -452,6 +454,7 @@ func file_v1_pricing_proto_init() {
 	if File_v1_pricing_proto != nil {
 		return
 	}
+	file_v1_pricing_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

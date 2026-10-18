@@ -17,9 +17,10 @@ service Pricing {
 message LineItem {
   string sku = 1;
   int64 quantity = 2;
-  // Optional assertion of the list price in minor units; 0 means unset.
-  // When set it must equal the price list price.
-  int64 unit_price_minor = 3;
+  // Optional assertion of the list price in minor units. Unset means no
+  // assertion; 0 is a legitimate asserted price. When set it must equal the
+  // price list price.
+  optional int64 unit_price_minor = 3;
   // Optional ISO-4217 code; empty means unset. When set it must equal the
   // price list currency.
   string currency = 4;
