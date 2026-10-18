@@ -15,4 +15,100 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  # Language build/test/lint jobs are added by ticket T-002 (path-filtered per service).
+
+  # Decides which language jobs run: a module (dir with go.mod / pom.xml) is
+  # selected only when files under it changed. No module -> empty matrix -> job skipped.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.detect.outputs.go }}
+      java: ${{ steps.detect.outputs.java }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -eu
+          if [ -n "${BASE_SHA:-}" ] && ! echo "$BASE_SHA" | grep -qE '^0+$' && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git diff --name-only "$BASE_SHA" HEAD > changed.txt
+          else
+            git ls-files > changed.txt  # no usable base: treat everything as changed
+          fi
+          pick() { # $1 = marker file name
+            git ls-files "**/$1" "$1" | while read -r m; do
+              d=$(dirname "$m")
+              if [ "$d" = "." ]; then hit=$(cat changed.txt)
+              else hit=$(grep -E "^$(printf '%s' "$d" | sed 's/[.[\*^$]/\\&/g')/" changed.txt || true); fi
+              [ -z "$hit" ] || echo "$d"
+            done | sort -u | jq -R . | jq -sc .
+          }
+          echo "go=$(pick go.mod)" >> "$GITHUB_OUTPUT"
+          echo "java=$(pick pom.xml)" >> "$GITHUB_OUTPUT"
+
+  go:
+    needs: changes
+    if: needs.changes.outputs.go != '[]' && needs.changes.outputs.go != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.changes.outputs.go) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: ${{ matrix.module }}
+      - name: go test
+        run: go test -race -cover ./...
+
+  java:
+    needs: changes
+    if: needs.changes.outputs.java != '[]' && needs.changes.outputs.java != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.changes.outputs.java) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Spotless check and verify
+        run: mvn -B spotless:check verify
+
+  scope-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check changed files against the ticket's Files in scope
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: sh scripts/check-scope.sh --pr "$PR_NUMBER"
