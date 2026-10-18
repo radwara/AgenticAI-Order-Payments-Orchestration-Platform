@@ -136,3 +136,22 @@ this library chart.
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Database env vars (optional `database` values). Always secretKeyRef to the Secret produced by the
+ExternalSecret in deploy/postgres; a plaintext value is never rendered, and a hand-written env entry
+with the same name fails the render instead of silently shadowing the secret.
+*/}}
+{{- define "service-base.databaseEnv" -}}
+{{- $secret := required "database.secretName is required when database.enabled is true" .Values.database.secretName -}}
+{{- range $name := list "DB_URL" "DB_USER" "DB_PASSWORD" }}
+{{- range $.Values.env }}
+{{- if eq .name $name }}{{ fail (printf "env %s conflicts with database.enabled; the value must come from the secret" $name) }}{{ end }}
+{{- end }}
+- name: {{ $name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret | quote }}
+      key: {{ $name }}
+{{- end }}
+{{- end -}}

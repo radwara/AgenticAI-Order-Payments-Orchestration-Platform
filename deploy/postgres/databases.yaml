@@ -1,0 +1,33 @@
+# One declarative Database per service (the orders database is bootstrapped in cluster.yaml).
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: opop-pg-payments
+spec:
+  name: payments
+  owner: payments
+  ensure: present
+  cluster:
+    name: opop-pg
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: opop-pg-inventory
+spec:
+  name: inventory
+  owner: inventory
+  ensure: present
+  cluster:
+    name: opop-pg
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: opop-pg-pricing
+spec:
+  name: pricing
+  owner: pricing
+  ensure: present
+  cluster:
+    name: opop-pg
