@@ -1,6 +1,6 @@
 name: guardrails
-# diff-size and the coverage gate steps are REPORT-ONLY (continue-on-error) until T-028
-# (#48) makes them skip header-verified generated files; dep-diff is enforcing.
+# All three gates enforce. Generated files are recognised by a header in the file
+# (scripts/check-deps.sh), never by name or directory (T-028).
 # Mechanical guard rails from agents/guardrails.md. Every job runs on every pull
 # request (no path filter) so each can be a required status check on main; the
 # coverage job decides internally which modules changed and passes when none did.
@@ -33,11 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
-      - name: Diff of at most 600 changed lines (lockfiles and generated files excluded)
-        continue-on-error: true
+      - name: Diff of at most 600 changed lines (lockfiles and header-verified generated files excluded)
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: sh scripts/check-deps.sh size --base "$BASE_SHA" 600
+        run: |
+          rc=0
+          out=$(sh scripts/check-deps.sh size --base "$BASE_SHA" 600 2>&1) || rc=$?
+          printf '%s\n' "$out"
+          { echo '### diff-size'; echo '```'; printf '%s\n' "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$rc" -eq 0 ] || echo "::warning::diff-size: over the 600-line limit; split the ticket (see the job summary)"
+          exit "$rc"
 
   coverage:
     runs-on: ubuntu-latest
@@ -79,22 +84,24 @@ jobs:
         run: pip install diff-cover==10.0.0
       - name: Self-test the coverage gate
         run: sh scripts/test-coverage-gate.sh
-      - name: Go changed lines at or above 80% covered
-        continue-on-error: true
+      - name: Go changed lines at or above 80% covered; no changed untested file
         if: steps.detect.outputs.go != ''
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MODULES: ${{ steps.detect.outputs.go }}
+          # Repository variable (not editable from a PR): build tags the tests run with, e.g. "integration".
+          GO_TEST_TAGS: ${{ vars.GO_TEST_TAGS }}
         run: |
           set -eu
+          fail() { echo "::warning::coverage: $1"; echo "- coverage gate failed: $1" >> "$GITHUB_STEP_SUMMARY"; exit 1; }
           : > lcov.info
           for m in $MODULES; do
-            (cd "$m" && go test -coverprofile=cover.out ./...)
+            (cd "$m" && go test -tags "$GO_TEST_TAGS" -coverprofile=cover.out ./...) || fail "go test failed in $m"
             sh scripts/check-deps.sh go-lcov "$m" "$m/cover.out" >> lcov.info
+            sh scripts/check-deps.sh go-untested "$m" "$m/cover.out" --base "$BASE_SHA" || fail "changed untested Go file in $m"
           done
-          diff-cover lcov.info --compare-branch "$BASE_SHA" --fail-under=80
+          diff-cover lcov.info --compare-branch "$BASE_SHA" --fail-under=80 --markdown-report report.md || { cat report.md >> "$GITHUB_STEP_SUMMARY"; fail "changed lines below 80% covered"; }
       - name: Java changed lines at or above 80% covered (JaCoCo)
-        continue-on-error: true
         if: steps.detect.outputs.java != ''
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -109,4 +116,5 @@ jobs:
             reports="$reports $r"
           done
           # shellcheck disable=SC2086 # intentional word splitting of report paths
-          diff-cover $reports --compare-branch "$BASE_SHA" --fail-under=80
+          diff-cover $reports --compare-branch "$BASE_SHA" --fail-under=80 --markdown-report report.md || {
+            cat report.md >> "$GITHUB_STEP_SUMMARY"; echo "::warning::coverage: Java changed lines below 80% covered"; exit 1; }
