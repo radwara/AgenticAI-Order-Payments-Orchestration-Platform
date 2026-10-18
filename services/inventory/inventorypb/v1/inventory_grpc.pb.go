@@ -29,11 +29,9 @@ const (
 //
 // InventoryService is the internal gRPC API for stock levels (SPEC-04, INV-1).
 type InventoryServiceClient interface {
-	// SetStock upserts on_hand for a SKU at a location; idempotent.
-	// INVALID_ARGUMENT if on_hand is negative or below reserved.
+	// SetStock upserts on_hand; idempotent. INVALID_ARGUMENT if negative or below reserved.
 	SetStock(ctx context.Context, in *SetStockRequest, opts ...grpc.CallOption) (*SetStockResponse, error)
-	// GetStock returns the stock level for a SKU at a location.
-	// NOT_FOUND if no stock row exists.
+	// GetStock returns the stock level; NOT_FOUND if there is no row.
 	GetStock(ctx context.Context, in *GetStockRequest, opts ...grpc.CallOption) (*GetStockResponse, error)
 }
 
@@ -71,11 +69,9 @@ func (c *inventoryServiceClient) GetStock(ctx context.Context, in *GetStockReque
 //
 // InventoryService is the internal gRPC API for stock levels (SPEC-04, INV-1).
 type InventoryServiceServer interface {
-	// SetStock upserts on_hand for a SKU at a location; idempotent.
-	// INVALID_ARGUMENT if on_hand is negative or below reserved.
+	// SetStock upserts on_hand; idempotent. INVALID_ARGUMENT if negative or below reserved.
 	SetStock(context.Context, *SetStockRequest) (*SetStockResponse, error)
-	// GetStock returns the stock level for a SKU at a location.
-	// NOT_FOUND if no stock row exists.
+	// GetStock returns the stock level; NOT_FOUND if there is no row.
 	GetStock(context.Context, *GetStockRequest) (*GetStockResponse, error)
 	mustEmbedUnimplementedInventoryServiceServer()
 }

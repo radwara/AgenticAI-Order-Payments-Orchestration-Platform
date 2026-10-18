@@ -6,12 +6,9 @@ option go_package = "github.com/radwara/agenticai-order-payments-orchestration-p
 
 // InventoryService is the internal gRPC API for stock levels (SPEC-04, INV-1).
 service InventoryService {
-  // SetStock upserts on_hand for a SKU at a location; idempotent.
-  // INVALID_ARGUMENT if on_hand is negative or below reserved.
+  // SetStock upserts on_hand; idempotent. INVALID_ARGUMENT if negative or below reserved.
   rpc SetStock(SetStockRequest) returns (SetStockResponse);
-
-  // GetStock returns the stock level for a SKU at a location.
-  // NOT_FOUND if no stock row exists.
+  // GetStock returns the stock level; NOT_FOUND if there is no row.
   rpc GetStock(GetStockRequest) returns (GetStockResponse);
 }
 
