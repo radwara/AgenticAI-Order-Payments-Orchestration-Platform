@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr review --approve:*)",
+      "Bash(gh pr review * --approve:*)",
+      "Bash(gh api * -X PUT *merge*)",
+      "Bash(gh api * --method PUT *merge*)",
+      "Bash(gh api -X PUT *merge*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push origin HEAD:main:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(gh issue edit * --add-label status:approved:*)",
+      "Bash(gh issue edit * --add-label \"status:approved\":*)"
+    ]
+  }
+}
