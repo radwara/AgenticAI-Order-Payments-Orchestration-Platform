@@ -27,6 +27,9 @@ type Config struct {
 	ServiceVersion string
 	// MetricInterval overrides the periodic metric export interval (default 10s).
 	MetricInterval time.Duration
+	// ShutdownTimeout bounds the returned shutdown function even when its context
+	// has no deadline (default 5s). A caller deadline that is sooner still wins.
+	ShutdownTimeout time.Duration
 }
 
 // Setup installs the W3C trace-context/baggage propagator and, when
@@ -72,7 +75,13 @@ func Setup(ctx context.Context, cfg Config) (shutdown func(context.Context) erro
 	otel.SetTracerProvider(tp)
 	otel.SetMeterProvider(mp)
 
+	stimeout := cfg.ShutdownTimeout
+	if stimeout <= 0 {
+		stimeout = 5 * time.Second
+	}
 	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, stimeout)
+		defer cancel()
 		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx))
 	}, nil
 }
