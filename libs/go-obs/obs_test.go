@@ -77,6 +77,10 @@ func (healthFunc) Watch(*grpc_health_v1.HealthCheckRequest, grpc.ServerStreaming
 	return nil
 }
 
+func (healthFunc) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
+	return &grpc_health_v1.HealthListResponse{}, nil
+}
+
 func serve(t *testing.T, h grpc_health_v1.HealthServer) string {
 	t.Helper()
 	l := listen(t)
@@ -215,5 +219,20 @@ func TestHTTPPropagation(t *testing.T) {
 	_ = resp.Body.Close()
 	if got != traceID {
 		t.Fatalf("trace id = %q, want %q", got, traceID)
+	}
+}
+
+func TestShutdownBoundedWithoutCallerDeadline(t *testing.T) {
+	t.Setenv(EndpointEnv, "http://127.0.0.1:1")
+	shutdown, err := Setup(context.Background(), Config{ServiceName: "svc", ShutdownTimeout: 300 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, sp := otel.Tracer("t").Start(context.Background(), "x")
+	sp.End()
+	start := time.Now()
+	_ = shutdown(context.Background()) // export failure expected; must return promptly
+	if el := time.Since(start); el > 3*time.Second {
+		t.Fatalf("shutdown took %v with 300ms ShutdownTimeout", el)
 	}
 }
