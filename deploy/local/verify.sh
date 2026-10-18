@@ -20,7 +20,7 @@ for db in orders payments inventory pricing; do
   fi
 done
 
-if "${DC[@]}" exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null; then
+if "${DC[@]}" exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list >/dev/null; then
   ok "kafka topic list"
 else
   bad "kafka topic list"
