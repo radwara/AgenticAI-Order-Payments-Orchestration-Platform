@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package inventory.v1;
+
+option go_package = "github.com/radwara/agenticai-order-payments-orchestration-platform/services/inventory/inventorypb/v1;inventoryv1";
+
+// InventoryService is the internal gRPC API for stock levels (SPEC-04, INV-1).
+service InventoryService {
+  // SetStock upserts on_hand for a SKU at a location; idempotent.
+  // INVALID_ARGUMENT if on_hand is negative or below reserved.
+  rpc SetStock(SetStockRequest) returns (SetStockResponse);
+
+  // GetStock returns the stock level for a SKU at a location.
+  // NOT_FOUND if no stock row exists.
+  rpc GetStock(GetStockRequest) returns (GetStockResponse);
+}
+
+message StockLevel {
+  string sku = 1;
+  string location = 2;
+  int64 on_hand = 3;
+  int64 reserved = 4;
+  int64 available = 5; // on_hand - reserved
+  int64 version = 6; // increments on every change
+  string updated_at = 7; // RFC 3339 UTC
+}
+
+message SetStockRequest {
+  string sku = 1;
+  string location = 2;
+  int64 on_hand = 3;
+}
+
+message SetStockResponse {
+  StockLevel stock = 1;
+}
+
+message GetStockRequest {
+  string sku = 1;
+  string location = 2;
+}
+
+message GetStockResponse {
+  StockLevel stock = 1;
+}
