@@ -27,3 +27,15 @@ so omitting them from values never weakens the baseline.
 - Zone topology spread defaults to `whenUnsatisfiable: DoNotSchedule` (hard, "spread across zones").
   Trade-off: on a cluster with fewer zones than replicas the extra pods stay Pending; set
   `whenUnsatisfiable: ScheduleAnyway` on the constraint to accept soft spreading.
+
+## Database (optional)
+
+```yaml
+database:
+  enabled: true
+  secretName: orders-db   # Secret with keys DB_URL, DB_USER, DB_PASSWORD (see deploy/postgres/externalsecrets.yaml)
+```
+
+Renders `DB_URL`, `DB_USER` and `DB_PASSWORD` env vars from `secretKeyRef` only (never a plaintext `value`).
+`migration: true` also renders `DB_MIGRATION_URL` (direct, not via the pooler) for migration Jobs.
+Omitted or `enabled: false` renders nothing. An `env` entry with one of those names fails the render.

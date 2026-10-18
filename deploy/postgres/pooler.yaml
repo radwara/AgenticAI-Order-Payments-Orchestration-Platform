@@ -1,0 +1,22 @@
+# PgBouncer in front of the primary (transaction pooling). Services connect to opop-pg-pooler-rw, never directly.
+# PgBouncer pinned to 1.24.1 (>= 1.21 supports max_prepared_statements).
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: opop-pg-pooler-rw
+spec:
+  cluster:
+    name: opop-pg
+  instances: 2
+  type: rw
+  template:
+    spec:
+      containers:
+        - name: pgbouncer
+          image: ghcr.io/cloudnative-pg/pgbouncer:1.24.1
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "400"
+      default_pool_size: "10"
+      max_prepared_statements: "100"

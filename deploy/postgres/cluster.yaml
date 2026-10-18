@@ -1,0 +1,74 @@
+# CloudNativePG cluster for dev/staging (SPEC-00 ADR-001: optional in-cluster alternative; production uses
+# managed Postgres, see docs/postgres.md). One database and one role per service; no shared credentials.
+# Role passwords come from the Secrets created by externalsecrets.yaml; no credential is stored in this file.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: opop-pg
+  labels:
+    app.kubernetes.io/name: opop-pg
+    app.kubernetes.io/part-of: opop
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+  storage:
+    size: 10Gi
+  bootstrap:
+    initdb:
+      # Application database for the first service; the others are declared in databases.yaml.
+      database: orders
+      owner: orders
+      secret:
+        name: orders-db
+  managed:
+    roles:
+      - name: orders
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        connectionLimit: 30
+        passwordSecret:
+          name: orders-db
+      - name: payments
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        connectionLimit: 30
+        passwordSecret:
+          name: payments-db
+      - name: inventory
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        connectionLimit: 30
+        passwordSecret:
+          name: inventory-db
+      - name: pricing
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        connectionLimit: 30
+        passwordSecret:
+          name: pricing-db
+  postgresql:
+    # TLS only, each role to its own database; everything else is rejected. The Database CRD cannot
+    # REVOKE CONNECT FROM PUBLIC, so the final reject is what closes that default privilege here.
+    # connectionLimit (30) = 2 pooler instances x default_pool_size 10 + 10 headroom for direct migrations.
+    pg_hba:
+      - hostssl orders orders all scram-sha-256
+      - hostssl payments payments all scram-sha-256
+      - hostssl inventory inventory all scram-sha-256
+      - hostssl pricing pricing all scram-sha-256
+      - host all all all reject

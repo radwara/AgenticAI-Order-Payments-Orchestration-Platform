@@ -136,3 +136,20 @@ this library chart.
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/* Database env vars: secretKeyRef only; an env entry with the same name fails the render. */}}
+{{- define "service-base.databaseEnv" -}}
+{{- $secret := required "database.secretName is required when database.enabled is true" .Values.database.secretName -}}
+{{- $names := list "DB_URL" "DB_USER" "DB_PASSWORD" }}
+{{- if .Values.database.migration }}{{ $names = append $names "DB_MIGRATION_URL" }}{{ end }}
+{{- range $name := $names }}
+{{- range $.Values.env }}
+{{- if eq .name $name }}{{ fail (printf "env %s conflicts with database.enabled; the value must come from the secret" $name) }}{{ end }}
+{{- end }}
+- name: {{ $name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret | quote }}
+      key: {{ $name }}
+{{- end }}
+{{- end -}}

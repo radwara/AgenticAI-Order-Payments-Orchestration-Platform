@@ -46,9 +46,15 @@ spec:
             - name: http
               containerPort: {{ .Values.containerPort }}
               protocol: TCP
-          {{- with .Values.env }}
+          {{- $db := default dict .Values.database }}
+          {{- if or .Values.env $db.enabled }}
           env:
+            {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if $db.enabled }}
+            {{- include "service-base.databaseEnv" . | nindent 12 }}
+            {{- end }}
           {{- end }}
           startupProbe:
             {{- toYaml (default $defaultProbes.startup $probes.startup) | nindent 12 }}
