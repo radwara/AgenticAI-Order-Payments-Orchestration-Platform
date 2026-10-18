@@ -1,0 +1,10 @@
+apiVersion: v2
+name: example-service
+description: Example service consuming the service-base library chart.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: service-base
+    version: 0.1.0
+    repository: file://../service-base

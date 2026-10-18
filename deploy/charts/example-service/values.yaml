@@ -1,0 +1,89 @@
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/example/example-service
+  # tag defaults to the chart appVersion. Set digest (sha256:...) to pin by digest; it takes precedence.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+containerPort: 8080
+service:
+  type: ClusterIP
+  port: 80
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+automountServiceAccountToken: false
+
+podLabels: {}
+podAnnotations: {}
+env: []
+extraVolumes: []
+extraVolumeMounts: []
+nodeSelector: {}
+tolerations: []
+
+# Merged over secure defaults (runAsNonRoot, seccomp RuntimeDefault).
+podSecurityContext:
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+# Merged over secure defaults (read-only rootfs, drop ALL, no privilege escalation).
+securityContext: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+probes:
+  startup:
+    httpGet: {path: /healthz/startup, port: http}
+    periodSeconds: 5
+    failureThreshold: 30
+  liveness:
+    httpGet: {path: /healthz/live, port: http}
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:
+    httpGet: {path: /healthz/ready, port: http}
+    periodSeconds: 5
+    failureThreshold: 3
+
+terminationGracePeriodSeconds: 30
+preStopCommand: ["sleep", "5"]
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+
+pdb:
+  maxUnavailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Default-deny is always rendered. Add allow rules (raw NetworkPolicy rule lists) here.
+networkPolicy:
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
