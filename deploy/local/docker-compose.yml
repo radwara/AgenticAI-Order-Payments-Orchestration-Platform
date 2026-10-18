@@ -1,6 +1,6 @@
 # Local dev stack: Postgres 16, single-broker Kafka (KRaft), Redis 7.
 # Credentials come from .env.example (fake, local-only). Ports bind to 127.0.0.1.
-# No named volumes: data is ephemeral so init scripts run on every `dev-up`.
+# No named volumes: data is ephemeral so init scripts run whenever containers are recreated.
 name: orders-platform-local
 
 services:
@@ -15,8 +15,10 @@ services:
     volumes:
       - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      # Healthy only once the init script has created the last database.
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} && psql -U $${POSTGRES_USER} -d $${POSTGRES_DB} -tAc \"SELECT 1 FROM pg_database WHERE datname='pricing'\" | grep -q 1"]
+      # Probe over TCP: the image's temporary init-time server listens on the unix
+      # socket only, so TCP success means the real server is up. Healthy only once
+      # the init script has created the last database.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB} && PGPASSWORD=$${POSTGRES_PASSWORD} psql -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB} -tAc \"SELECT 1 FROM pg_database WHERE datname='pricing'\" | grep -q 1"]
       interval: 5s
       timeout: 5s
       retries: 20
