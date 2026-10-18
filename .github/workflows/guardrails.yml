@@ -1,0 +1,112 @@
+name: guardrails
+# diff-size and the coverage gate steps are REPORT-ONLY (continue-on-error) until T-028
+# (#48) makes them skip header-verified generated files; dep-diff is enforcing.
+# Mechanical guard rails from agents/guardrails.md. Every job runs on every pull
+# request (no path filter) so each can be a required status check on main; the
+# coverage job decides internally which modules changed and passes when none did.
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+jobs:
+  dep-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Self-test check-deps.sh
+        run: |
+          sh scripts/test-check-deps.sh
+          sh scripts/test-branch-protection.sh
+      - name: No dependency outside the linked ticket's Constraints
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: sh scripts/check-deps.sh deps --pr "$PR_NUMBER" --base "$BASE_SHA"
+
+  diff-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Diff of at most 600 changed lines (lockfiles and generated files excluded)
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: sh scripts/check-deps.sh size --base "$BASE_SHA" 600
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - id: detect
+        name: Find changed Go and Java modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -eu
+          git diff --name-only "$BASE_SHA" HEAD > changed.txt
+          pick() { # $1 = marker file name; prints module dirs whose files changed
+            git ls-files "$1" "**/$1" | while read -r m; do
+              d=$(dirname "$m")
+              if [ "$d" = "." ]; then hit=$(cat changed.txt)
+              else hit=$(awk -v d="$d/" 'index($0, d) == 1' changed.txt); fi
+              [ -z "$hit" ] || echo "$d"
+            done | sort -u | tr '\n' ' '
+          }
+          echo "go=$(pick go.mod)" >> "$GITHUB_OUTPUT"
+          echo "java=$(pick pom.xml)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        if: steps.detect.outputs.go != ''
+        with:
+          go-version: stable # newest toolchain; each module's own go directive still applies
+          cache: false
+      - uses: actions/setup-java@v4
+        if: steps.detect.outputs.java != ''
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install diff-cover (pinned)
+        run: pip install diff-cover==10.0.0
+      - name: Self-test the coverage gate
+        run: sh scripts/test-coverage-gate.sh
+      - name: Go changed lines at or above 80% covered
+        continue-on-error: true
+        if: steps.detect.outputs.go != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MODULES: ${{ steps.detect.outputs.go }}
+        run: |
+          set -eu
+          : > lcov.info
+          for m in $MODULES; do
+            (cd "$m" && go test -coverprofile=cover.out ./...)
+            sh scripts/check-deps.sh go-lcov "$m" "$m/cover.out" >> lcov.info
+          done
+          diff-cover lcov.info --compare-branch "$BASE_SHA" --fail-under=80
+      - name: Java changed lines at or above 80% covered (JaCoCo)
+        continue-on-error: true
+        if: steps.detect.outputs.java != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MODULES: ${{ steps.detect.outputs.java }}
+        run: |
+          set -eu
+          reports=""
+          for m in $MODULES; do
+            (cd "$m" && mvn -B verify)
+            r="$m/target/site/jacoco/jacoco.xml"
+            [ -f "$r" ] || { echo "no JaCoCo report at $r: configure jacoco-maven-plugin in $m/pom.xml (the gate is not skipped)"; exit 1; }
+            reports="$reports $r"
+          done
+          # shellcheck disable=SC2086 # intentional word splitting of report paths
+          diff-cover $reports --compare-branch "$BASE_SHA" --fail-under=80
