@@ -1,0 +1,16 @@
+{
+  "2": {"title": "[T-002] Path-filtered CI", "labels": [{"name": "area:platform"}, {"name": "status:coding"}],
+        "body": "## Why\nx\n\n## Files in scope\n`deploy/local/**`, `scripts/check-scope.sh`\n\n## Depends on\nT-001\n"},
+  "3": {"title": "[T-003] Broad ticket", "labels": [{"name": "status:approved"}],
+        "body": "## Files in scope\n`services/`, `deploy/`, `scripts/`\n"},
+  "4": {"title": "[T-004] Unapproved", "labels": [{"name": "status:needs-approval"}],
+        "body": "## Files in scope\n`scripts/`\n"},
+  "5": {"title": "[T-005] No status", "labels": [{"name": "area:platform"}],
+        "body": "## Files in scope\n`scripts/`\n"},
+  "6": {"title": "[T-006] Both labels", "labels": [{"name": "status:coding"}, {"name": "status:needs-approval"}],
+        "body": "## Files in scope\n`scripts/`\n"},
+  "7": {"title": "[T-007] Escalated", "labels": [{"name": "status:escalated"}],
+        "body": "## Files in scope\n`scripts/`\n"},
+  "8": {"title": "[T-008] Human review", "labels": [{"name": "status:human-review"}],
+        "body": "## Files in scope\n`scripts/`\n"}
+}
