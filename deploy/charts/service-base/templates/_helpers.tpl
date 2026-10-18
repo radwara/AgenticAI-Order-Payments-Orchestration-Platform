@@ -69,3 +69,70 @@ capabilities:
 seccompProfile:
   type: RuntimeDefault
 {{- end -}}
+
+{{/* Default resources and probes. Used when values set them to null/empty, so the baseline cannot be dropped by omission. */}}
+{{- define "service-base.defaultResources" -}}
+requests:
+  cpu: 100m
+  memory: 128Mi
+limits:
+  memory: 256Mi
+{{- end -}}
+
+{{- define "service-base.defaultProbes" -}}
+startup:
+  httpGet: {path: /healthz/startup, port: http}
+  periodSeconds: 5
+  failureThreshold: 30
+liveness:
+  httpGet: {path: /healthz/live, port: http}
+  periodSeconds: 10
+  failureThreshold: 3
+readiness:
+  httpGet: {path: /healthz/ready, port: http}
+  periodSeconds: 5
+  failureThreshold: 3
+{{- end -}}
+
+{{/*
+Guard against values that weaken the security baseline (PRD 9.2). The values the service supplied
+are inspected directly, because zero values (`false`, `0`) are not reliably carried by a merge.
+There is intentionally no opt-out: a workload that genuinely needs more privilege must not use
+this library chart.
+*/}}
+{{- define "service-base.validateSecurity" -}}
+{{- $scopes := dict "podSecurityContext" (default dict .Values.podSecurityContext) "securityContext" (default dict .Values.securityContext) -}}
+{{- range $scope, $sc := $scopes -}}
+{{- if and (hasKey $sc "privileged") $sc.privileged -}}
+{{- fail (printf "%s.privileged=true is not allowed by the service-base security baseline" $scope) -}}
+{{- end -}}
+{{- if and (hasKey $sc "runAsNonRoot") (not $sc.runAsNonRoot) -}}
+{{- fail (printf "%s.runAsNonRoot=false is not allowed by the service-base security baseline" $scope) -}}
+{{- end -}}
+{{- if and (hasKey $sc "runAsUser") (eq (toString $sc.runAsUser) "0") -}}
+{{- fail (printf "%s.runAsUser=0 (root) is not allowed by the service-base security baseline" $scope) -}}
+{{- end -}}
+{{- if and (hasKey $sc "readOnlyRootFilesystem") (not $sc.readOnlyRootFilesystem) -}}
+{{- fail (printf "%s.readOnlyRootFilesystem=false is not allowed; use extraVolumes/extraVolumeMounts for writable paths" $scope) -}}
+{{- end -}}
+{{- if and (hasKey $sc "allowPrivilegeEscalation") $sc.allowPrivilegeEscalation -}}
+{{- fail (printf "%s.allowPrivilegeEscalation=true is not allowed by the service-base security baseline" $scope) -}}
+{{- end -}}
+{{- if hasKey $sc "seccompProfile" -}}
+{{- $type := toString (default dict $sc.seccompProfile).type -}}
+{{- if not (has $type (list "RuntimeDefault" "Localhost")) -}}
+{{- fail (printf "%s.seccompProfile.type=%s is not allowed; use RuntimeDefault (or Localhost)" $scope $type) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- with (default dict .Values.securityContext).capabilities -}}
+{{- if and .drop (not (has "ALL" .drop)) -}}
+{{- fail "securityContext.capabilities.drop must include ALL" -}}
+{{- end -}}
+{{- range (default list .add) -}}
+{{- if has (toString . | upper) (list "ALL" "SYS_ADMIN") -}}
+{{- fail (printf "securityContext.capabilities.add %s is not allowed by the service-base security baseline" .) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

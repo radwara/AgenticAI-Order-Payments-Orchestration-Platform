@@ -6,12 +6,13 @@
 ## Interim controls (in place)
 - `.claude/settings.json` forces an interactive approval for `gh pr merge`, PR approval, merge via API, pushes to `main`, force-pushes and applying `status:approved`. Background agents cannot answer, so they are blocked. Only a human at the keyboard can allow these.
 - Every agent prompt says: never merge, never approve, never push to `main`.
-- Branch protection is NOT available: GitHub requires Pro or a public repository for private repos (HTTP 403).
+- Branch protection is applied to `main` (repository made public, since private free-plan repos cannot use it): PR required, 1 approving review from a code owner, required check `secrets-scan`, linear history, conversation resolution, no force-push or deletion. `enforce_admins` is off, so the repository admin can still bypass; agents must never use that.
+- Limitation until bot accounts exist: all agents and the maintainer share one login, so the PR author is also the only code owner and cannot approve their own PR. Merges therefore need an admin bypass by the maintainer, which the `ask` rules above gate.
 
 ## Target setup (needs the maintainer; agents cannot create accounts)
 1. Create three machine users (or GitHub Apps): `opop-ticket-agent`, `opop-code-agent`, `opop-review-agent`. Add them as collaborators with **Write** (App equivalents: Contents RW, Pull requests RW, Issues RW, Checks R).
 2. Give each agent only its own token (fine-grained PAT, repo-scoped, 90-day expiry). Store tokens in the orchestrator's secret store, never in the repo.
-3. Make the repository public or upgrade to GitHub Pro, then apply protection to `main`:
+3. (Done, see above.) Protection applied to `main`:
    - Require a pull request; require 1 approving review from a code owner (CODEOWNERS = the human maintainer only); dismiss stale approvals.
    - Required status checks: `secrets-scan`, plus `scope-check`, `go`, `java` once T-002/T-022 fixes land.
    - Require linear history; no force-push; no deletion; resolve conversations before merge.

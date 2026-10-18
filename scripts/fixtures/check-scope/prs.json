@@ -1,0 +1,19 @@
+{
+  "ok":          {"title": "[T-002] Fix things", "body": "## Summary\n<!-- Closes #99 placeholder -->\nCloses #2\n"},
+  "refs":        {"title": "[T-002] Fix things", "body": "Refs #2\nAlso see #3 for context.\n"},
+  "multi":       {"title": "[T-002] Fix things", "body": "Closes #2\nCloses #3\n"},
+  "same-twice":  {"title": "[T-002] Fix things", "body": "Closes #2\nrefs #2\n"},
+  "refs-upper":  {"title": "[T-002] Fix things", "body": "REFS #2\n"},
+  "fixes":       {"title": "[T-002] Fix things", "body": "fixes #2\n"},
+  "mixed-same":  {"title": "[T-002] Fix things", "body": "Resolves #2 and Refs: #2\n"},
+  "mixed-diff":  {"title": "[T-002] Fix things", "body": "Refs #2\nCloses #3\n"},
+  "nolink":     {"title": "[T-002] Fix things", "body": "No link here, just #2 mentioned.\n"},
+  "wrongid":     {"title": "[T-002] Fix things", "body": "Closes #3\n"},
+  "notitleid":   {"title": "Fix things", "body": "Closes #2\n"},
+  "unapproved":  {"title": "[T-004] Fix things", "body": "Closes #4\n"},
+  "nostatus":    {"title": "[T-005] Fix things", "body": "Closes #5\n"},
+  "bothlabels":  {"title": "[T-006] Fix things", "body": "Closes #6\n"},
+  "escalated":   {"title": "[T-007] Fix things", "body": "Closes #7\n"},
+  "humanreview": {"title": "[T-008] Fix things", "body": "Closes #8\n"},
+  "missing":     {"title": "[T-002] Fix things", "body": "Closes #77\n"}
+}

@@ -62,16 +62,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
+          # Each module declares its own `go` directive; use it (modules may be
+          # older than the Go 1.27 toolchain used for local development).
           go-version-file: ${{ matrix.module }}/go.mod
-          cache-dependency-path: ${{ matrix.module }}/go.sum
+          # go.mod always exists; go.sum only when the module has dependencies
+          # (a missing cache-dependency-path file makes setup-go fail).
+          cache-dependency-path: ${{ matrix.module }}/go.*
       - name: gofmt
         run: |
           out=$(gofmt -l .)
           if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi
       - name: go vet
         run: go vet ./...
-      - uses: golangci/golangci-lint-action@v6
+      # Action v8 supports golangci-lint v2 (>= v2.1.0); v6 supported v1 only.
+      # The lint version is pinned explicitly, not left to the action default.
+      - uses: golangci/golangci-lint-action@v8
         with:
+          version: v2.15
           working-directory: ${{ matrix.module }}
       - name: go test
         run: go test -race -cover ./...
@@ -106,6 +113,8 @@ jobs:
       issues: read
     steps:
       - uses: actions/checkout@v4
+      - name: Self-test check-scope.sh
+        run: sh scripts/test-check-scope.sh
       - name: Check changed files against the ticket's Files in scope
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -11,9 +11,10 @@
 2. **Read** the referenced specs and the *Files in scope*. If the ticket is ambiguous, conflicts with a spec, or needs a file outside scope, **comment on the issue with the question and set `status:escalated`**. Do not guess.
 3. **Plan** in a short comment on the issue: files to touch, tests to write mapping 1:1 to acceptance criteria.
 4. **Tests first** where practical: write the acceptance tests, see them fail, then implement.
-5. **Implement** on branch `agent/T-XXX-slug`. Smallest change that satisfies the criteria. Follow the language standards in the specs (Go: `gofmt`, `golangci-lint`; Java 21: Spring Boot, Spotless).
-6. **Run locally** build, tests, lint. Fix until green. Max 2 CI re-attempts on red; then escalate with the log.
-7. **Open the PR** using the PR template: link `Closes #N`, tick each acceptance criterion with the test that proves it, list any deviations, set `status:in-review`.
+5. **Follow `agents/coding-standards.md`** (quality conventions; guard rails still take precedence).
+6. **Implement** on branch `agent/T-XXX-slug`. Smallest change that satisfies the criteria. Follow the language standards in the specs (Go: `gofmt`, `golangci-lint`; Java 21: Spring Boot, Spotless).
+7. **Run locally** build, tests, lint. Fix until green. Max 2 CI re-attempts on red; then escalate with the log.
+8. **Open the PR** using the PR template: link `Closes #N`, tick each acceptance criterion with the test that proves it, list any deviations, set `status:in-review`.
 
 ## Fix rounds
 - Address each finding: fix, or reply with a reasoned disagreement and evidence. Never silently ignore a finding.

@@ -3,6 +3,7 @@
 package money
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ var (
 	ErrOverflow         = errors.New("money: arithmetic overflow")
 	ErrDivideByZero     = errors.New("money: zero denominator")
 	ErrInvalidRatios    = errors.New("money: invalid allocation ratios")
+	ErrInvalidJSON      = errors.New("money: invalid JSON")
 )
 
 // Money is an amount in minor units (cents, yen, fils) of an ISO-4217 currency.
@@ -166,13 +168,29 @@ func (m Money) MarshalJSON() ([]byte, error) {
 	return json.Marshal(wire(m))
 }
 
-// UnmarshalJSON decodes and validates the currency.
+// UnmarshalJSON decodes and validates. Both "amount" and "currency" must be
+// present (a missing amount must never silently become zero), the currency
+// must be supported, and unknown fields or trailing data are rejected.
 func (m *Money) UnmarshalJSON(b []byte) error {
-	var w wire
-	if err := json.Unmarshal(b, &w); err != nil {
+	var w struct {
+		Amount   *int64  `json:"amount"`
+		Currency *string `json:"currency"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&w); err != nil {
 		return err
 	}
-	v, err := New(w.Amount, w.Currency)
+	if dec.More() {
+		return errors.New("money: unexpected data after JSON object")
+	}
+	if w.Amount == nil {
+		return fmt.Errorf("%w: missing amount", ErrInvalidJSON)
+	}
+	if w.Currency == nil {
+		return fmt.Errorf("%w: missing currency", ErrInvalidJSON)
+	}
+	v, err := New(*w.Amount, *w.Currency)
 	if err != nil {
 		return err
 	}

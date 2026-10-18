@@ -13,7 +13,7 @@
 3. **Domain invariants:** money in minor units, balanced ledger, state-machine-only transitions, outbox-only events.
 4. **Security:** input validation, authz, secrets, injection, PCI boundary (no raw card data).
 5. **Tests:** meaningful assertions, not just coverage; failure paths covered.
-6. **Maintainability:** simplicity, naming, matching surrounding code. Lowest priority.
+6. **Maintainability and standards:** check against `agents/coding-standards.md`; simplicity, naming, matching surrounding code. Lowest priority; style-only findings are `minor` or `nit`.
 
 ## Output: structured findings
 Each finding is one PR review comment plus an entry in a machine-readable summary comment:

@@ -1,0 +1,18 @@
+{
+  "paged": [
+    [{"filename": "deploy/local/a.yml", "status": "added"}, {"filename": "scripts/check-scope.sh", "status": "modified"}],
+    [{"filename": "deploy/local/b.yml", "status": "added"}]
+  ],
+  "rename-into-scope": [
+    [{"filename": "deploy/local/foo.go", "previous_filename": "services/x/foo.go", "status": "renamed"}]
+  ],
+  "rename-in-scope": [
+    [{"filename": "deploy/local/new.yml", "previous_filename": "deploy/local/old.yml", "status": "renamed"}]
+  ],
+  "scripts-only": [
+    [{"filename": "scripts/x.sh", "status": "modified"}]
+  ],
+  "out-of-scope": [
+    [{"filename": "services/evil.go", "status": "added"}]
+  ]
+}
