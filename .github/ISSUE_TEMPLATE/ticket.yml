@@ -1,0 +1,33 @@
+name: Ticket
+description: A small, fully-defined unit of work for the code agent. Needs human approval before coding.
+title: "[T-XXX] "
+labels: ["status:needs-approval"]
+body:
+  - type: textarea
+    id: why
+    attributes: {label: Why, description: "Business/technical reason. Link PRD/spec requirement IDs."}
+    validations: {required: true}
+  - type: textarea
+    id: what
+    attributes: {label: What, description: "Precise behaviour to build."}
+    validations: {required: true}
+  - type: textarea
+    id: constraints
+    attributes: {label: Constraints, description: "Language, libraries allowed, performance, security, invariants."}
+    validations: {required: true}
+  - type: textarea
+    id: out_of_scope
+    attributes: {label: Out of scope}
+    validations: {required: true}
+  - type: textarea
+    id: acceptance
+    attributes: {label: Acceptance criteria (validations), description: "Checklist; each item must be provable by an automated test."}
+    validations: {required: true}
+  - type: textarea
+    id: files
+    attributes: {label: Files in scope, description: "Paths/globs the PR may touch."}
+    validations: {required: true}
+  - type: input
+    id: depends
+    attributes: {label: Depends on, description: "Ticket IDs or 'none'."}
+    validations: {required: true}

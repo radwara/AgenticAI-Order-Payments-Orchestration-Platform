@@ -1,0 +1,17 @@
+- {name: "status:needs-approval", color: "fbca04", description: "Ticket drafted, waiting for human approval"}
+- {name: "status:approved", color: "0e8a16", description: "Human approved; code agent may start"}
+- {name: "status:coding", color: "1d76db", description: "Code agent working"}
+- {name: "status:in-review", color: "5319e7", description: "Review agent reviewing"}
+- {name: "status:fixing", color: "d93f0b", description: "Code agent addressing findings"}
+- {name: "status:human-review", color: "0075ca", description: "Waiting for human review and merge"}
+- {name: "status:escalated", color: "b60205", description: "Needs human decision"}
+- {name: "phase:1", color: "c5def5", description: "Foundation and walking skeleton"}
+- {name: "lang:go", color: "00add8", description: ""}
+- {name: "lang:java", color: "b07219", description: ""}
+- {name: "area:platform", color: "bfd4f2", description: ""}
+- {name: "area:order", color: "bfd4f2", description: ""}
+- {name: "area:payment", color: "bfd4f2", description: ""}
+- {name: "area:inventory", color: "bfd4f2", description: ""}
+- {name: "area:pricing", color: "bfd4f2", description: ""}
+- {name: "size:S", color: "ededed", description: "Under ~200 changed lines"}
+- {name: "size:M", color: "ededed", description: "200-600 changed lines"}
