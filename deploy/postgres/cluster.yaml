@@ -29,8 +29,7 @@ spec:
         createdb: false
         createrole: false
         replication: false
-        inherit: false
-        connectionLimit: 20
+        connectionLimit: 30
         passwordSecret:
           name: orders-db
       - name: payments
@@ -40,8 +39,7 @@ spec:
         createdb: false
         createrole: false
         replication: false
-        inherit: false
-        connectionLimit: 20
+        connectionLimit: 30
         passwordSecret:
           name: payments-db
       - name: inventory
@@ -51,8 +49,7 @@ spec:
         createdb: false
         createrole: false
         replication: false
-        inherit: false
-        connectionLimit: 20
+        connectionLimit: 30
         passwordSecret:
           name: inventory-db
       - name: pricing
@@ -62,16 +59,16 @@ spec:
         createdb: false
         createrole: false
         replication: false
-        inherit: false
-        connectionLimit: 20
+        connectionLimit: 30
         passwordSecret:
           name: pricing-db
   postgresql:
-    # Each role may connect only to its own database; everything else is rejected. Rules are evaluated
-    # in order, so the final reject also covers the PUBLIC CONNECT privilege Postgres grants by default.
+    # TLS only, each role to its own database; everything else is rejected. The Database CRD cannot
+    # REVOKE CONNECT FROM PUBLIC, so the final reject is what closes that default privilege here.
+    # connectionLimit (30) = 2 pooler instances x default_pool_size 10 + 10 headroom for direct migrations.
     pg_hba:
-      - host orders orders all scram-sha-256
-      - host payments payments all scram-sha-256
-      - host inventory inventory all scram-sha-256
-      - host pricing pricing all scram-sha-256
+      - hostssl orders orders all scram-sha-256
+      - hostssl payments payments all scram-sha-256
+      - hostssl inventory inventory all scram-sha-256
+      - hostssl pricing pricing all scram-sha-256
       - host all all all reject

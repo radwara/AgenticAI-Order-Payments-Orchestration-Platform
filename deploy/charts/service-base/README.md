@@ -37,4 +37,5 @@ database:
 ```
 
 Renders `DB_URL`, `DB_USER` and `DB_PASSWORD` env vars from `secretKeyRef` only (never a plaintext `value`).
+`migration: true` also renders `DB_MIGRATION_URL` (direct, not via the pooler) for migration Jobs.
 Omitted or `enabled: false` renders nothing. An `env` entry with one of those names fails the render.

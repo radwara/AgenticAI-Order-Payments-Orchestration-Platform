@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# Validates the Postgres deployment manifests and chart wiring (T-024).
-#   1. kubeconform --strict on deploy/postgres/*.yaml (CNPG + External Secrets CRD schemas, pinned)
-#      and on a service-base render with database.enabled
-#   2. isolation assertions on the parsed CRs: one database and one role per service, no role can
-#      reach another service's database, no shared credentials, no plaintext secrets
-#   3. chart assertions: DB_URL/DB_USER/DB_PASSWORD come from secretKeyRef only
-#   4. docs/postgres.md covers the required topics
-#   5. self-test: mutate scratch copies; every mutation must make the checks above fail
-# Requires: helm 3, kubeconform v0.8.0, python3 (stdlib only). NETWORK is needed on the first run to
-# download the CRD schemas (pinned by commit); they are cached in $KUBECONFORM_CACHE afterwards.
+# Validates the Postgres manifests and chart wiring (T-024): kubeconform --strict (pinned CNPG and External
+# Secrets schemas), isolation and ExternalSecret assertions on the parsed CRs, chart secretKeyRef-only
+# assertions, docs headings, and a self-test where every mutation of a scratch copy must be detected.
+# Requires helm 3, kubeconform v0.8.0, python3 (stdlib). NETWORK is needed on the first run for the CRD
+# schemas (pinned by commit); they are cached in $KUBECONFORM_CACHE afterwards.
 set -euo pipefail
 
 HELM_MAJOR="3"
@@ -76,7 +71,7 @@ def isolation(docs):
         need(r.get('login') is True, 'role %s must login' % n)
         for flag in ('superuser', 'createdb', 'createrole', 'replication'):
             need(r.get(flag) is False, 'role %s must set %s: false' % (n, flag))
-        need(r.get('inherit') is False and 'inRoles' not in r, 'role %s must not inherit other roles' % n)
+        need('inRoles' not in r, 'role %s must not be a member of other roles' % n)
         need(get(r, 'passwordSecret.name') == n + '-db', 'role %s passwordSecret must be %s-db' % (n, n))
     # databases: bootstrap database plus Database CRs; each owned by the role of the same name
     dbs = {}
@@ -92,41 +87,63 @@ def isolation(docs):
     need(sorted(dbs) == sorted(names), 'databases %s must match roles %s one to one' % (sorted(dbs), sorted(names)))
     for db, owner in dbs.items():
         need(db == owner, 'database %s must be owned by its own role, not %s' % (db, owner))
-    # pg_hba: exactly one rule per role, restricted to its own database; the final rule rejects all else
+    # pg_hba: TLS-only, exactly one rule per role restricted to its own database; the final rule rejects all else
     hba = get(cl, 'spec.postgresql.pg_hba')
     hba = hba if isinstance(hba, list) else []
-    need(bool(hba) and hba[-1].split()[:4] == ['host', 'all', 'all', 'all'] and hba[-1].split()[-1] == 'reject',
-         'pg_hba must end with a "host all all all reject" rule')
+    need(bool(hba) and hba[-1].split() == ['host', 'all', 'all', 'all', 'reject'], 'pg_hba must end with "host all all all reject"')
     for n in names:
         mine = [h for h in hba[:-1] if h.split()[1:3] == [n, n]]
-        need(len(mine) == 1 and mine[0].split()[0] == 'host' and mine[0].split()[-1] == 'scram-sha-256',
-             'pg_hba must allow %s only to database %s with scram-sha-256' % (n, n))
+        need(len(mine) == 1 and mine[0].split()[0] == 'hostssl' and mine[0].split()[-1] == 'scram-sha-256',
+             'pg_hba must allow %s only to database %s over hostssl with scram-sha-256' % (n, n))
     need(len(hba) - 1 == len(names), 'pg_hba may contain only per-role rules before the final reject')
-    # External secrets: one per service, own secret, own cloud key, no shared credential
+    need(re.search(r':[0-9][\w.-]*$', str(get(cl, 'spec.imageName'))) is not None, 'Cluster imageName must pin a version tag')
+    bs = get(boot, 'secret.name') if isinstance(boot, dict) else None
+    need(bs == str(get(boot, 'owner')) + '-db', 'bootstrap secret must be the owner role\'s own secret')
+    # External secrets: one per service; every templated value is a pure reference to the right own key
     ess = {get(e, 'metadata.name'): e for e in of(docs, 'ExternalSecret')}
     need(sorted(ess) == sorted(n + '-db' for n in names), 'one ExternalSecret <service>-db per service')
-    keys = []
+    want = {'username': 'user', 'DB_USER': 'user', 'password': 'password', 'DB_PASSWORD': 'password',
+            'DB_URL': 'url', 'DB_MIGRATION_URL': 'migration_url'}
+    keys, stores = [], set()
     for n, e in ess.items():
         need(get(e, 'spec.target.name') == n, '%s must target Secret %s' % (n, n))
-        for k in ('DB_URL', 'DB_USER', 'DB_PASSWORD', 'username', 'password'):
-            need(get(e, 'spec.target.template.data.' + k) is not MISSING, '%s must template key %s' % (n, k))
-        for item in get(e, 'spec.data') or []:
-            need('value' not in item and 'value' not in (item.get('remoteRef') or {}), '%s holds a plaintext value' % n)
-            keys.append(get(item, 'remoteRef.key'))
-            need(n[:-3] in str(get(item, 'remoteRef.key')), '%s remoteRef.key must be service specific' % n)
+        stores.add(get(e, 'spec.secretStoreRef.name'))
+        tpl = get(e, 'spec.target.template.data')
+        need(isinstance(tpl, dict) and tpl == {k: '{{ .%s }}' % v for k, v in want.items()},
+             '%s template must map each key to exactly its own {{ .key }} reference (no literals, no cross-wiring)' % n)
+        need(get(e, 'spec.data') is MISSING, '%s must not carry literal data items' % n)
+        ex = get(e, 'spec.dataFrom') or []
+        need(len(ex) == 1 and set(ex[0]) == {'extract'} and set(ex[0]['extract']) == {'key'}, '%s must extract exactly one cloud secret' % n)
+        keys.append(get(ex[0], 'extract.key') if ex else None)
+        need(n[:-3] in str(keys[-1]), '%s cloud secret key must be service specific' % n)
     need(len(set(keys)) == len(ess), 'each service must use its own single cloud secret key (no shared credentials)')
+    need(stores == {'cloud-secrets'}, 'all ExternalSecrets must use the cloud-secrets store')
     poolers = of(docs, 'Pooler')
     need(len(poolers) == 1 and get(poolers[0], 'spec.cluster.name') == cname and get(poolers[0], 'spec.type') == 'rw',
          'one rw Pooler for the Cluster expected')
+    if len(poolers) == 1:
+        po = poolers[0]
+        par = get(po, 'spec.pgbouncer.parameters') or {}
+        inst, pool = get(po, 'spec.instances'), int(par.get('default_pool_size', 0))
+        need(get(po, 'spec.pgbouncer.poolMode') == 'transaction', 'Pooler must use transaction pool mode')
+        need(isinstance(inst, int) and inst >= 2, 'Pooler needs at least 2 instances')
+        need(1 <= pool <= 50, 'default_pool_size must be between 1 and 50')
+        need(int(par.get('max_prepared_statements', 0)) > 0, 'max_prepared_statements must be set (transaction pooling)')
+        img = str(get(po, 'spec.template.spec.containers.0.image'))
+        ver = re.search(r':(\d+)\.(\d+)', img)
+        need(ver is not None and (int(ver.group(1)), int(ver.group(2))) >= (1, 21), 'PgBouncer image must be pinned to >= 1.21')
+        for r in roles:
+            need(isinstance(r.get('connectionLimit'), int) and isinstance(inst, int) and r['connectionLimit'] > inst * pool,
+                 'role %s connectionLimit must exceed pooler instances x default_pool_size' % r.get('name'))
     return errs
 
-def chart(docs, secret):
+def chart(docs, secret, names):
     errs = []
     dep = [d for d in docs if isinstance(d, dict) and d.get('kind') == 'Deployment']
     env = get(dep[0], 'spec.template.spec.containers.0.env') if dep else MISSING
     if not isinstance(env, list):
         return ['no env rendered']
-    for name in ('DB_URL', 'DB_USER', 'DB_PASSWORD'):
+    for name in names:
         hits = [e for e in env if e.get('name') == name]
         if len(hits) != 1:
             errs.append('%s must appear exactly once' % name)
@@ -148,7 +165,7 @@ def main(argv):
             return 2
         open(path, 'w').write(text.replace(old, new, 1))
         return 0
-    errs = isolation(load(argv[2])) if mode == 'isolation' else chart(parse_docs(sys.stdin.read()), argv[2])
+    errs = isolation(load(argv[2])) if mode == 'isolation' else chart(parse_docs(sys.stdin.read()), argv[2], argv[3:])
     for e in errs:
         print('FAIL: ' + e)
     return 1 if errs else 0
@@ -182,10 +199,13 @@ pass "one database and one role per service; no cross-database access; no shared
 
 # 3. Chart wiring -----------------------------------------------------------------------------------
 for svc in orders payments inventory pricing; do
-  render --set database.enabled=true --set "database.secretName=${svc}-db" | py chart "${svc}-db" \
+  render --set database.enabled=true --set "database.secretName=${svc}-db" | py chart "${svc}-db" DB_URL DB_USER DB_PASSWORD \
     || fail "chart DB env for ${svc}"
 done
 pass "chart renders DB_URL/DB_USER/DB_PASSWORD from secretKeyRef only (all four services)"
+render --set database.enabled=true --set database.migration=true --set database.secretName=orders-db \
+  | py chart orders-db DB_URL DB_USER DB_PASSWORD DB_MIGRATION_URL || fail "chart DB_MIGRATION_URL env"
+pass "database.migration renders DB_MIGRATION_URL from secretKeyRef"
 ! render | grep -q "DB_URL" || fail "DB env rendered although database is not enabled"
 pass "no DB env when database is not enabled"
 render --set database.enabled=true >/dev/null 2>&1 && fail "database.enabled without secretName must fail"
@@ -200,25 +220,42 @@ done
 pass "docs/postgres.md covers managed production, pooler, migration job, private networking and backups"
 
 # 5. Self-test: every mutation must be caught ------------------------------------------------------------
-mutate_pg() { # <file> <old> <new>
+mutate_pg() { # <file>|<old>|<new>: each mutation, applied alone to a scratch copy, must be detected
+  local f o n
+  IFS='|' read -r f o n <<<"$1"
   rm -rf "$TMP/m" && cp -R "$PG" "$TMP/m"
-  py mutate "$TMP/m/$1" "$2" "$3" || fail "mutation target missing: $2"
-  ! py isolation "$TMP/m" >/dev/null || fail "isolation check missed mutation: $1 '$2' -> '$3'"
+  py mutate "$TMP/m/$f" "$o" "$n" || fail "mutation target missing: $o"
+  ! py isolation "$TMP/m" >/dev/null || fail "isolation check missed mutation: $f '$o' -> '$n'"
 }
-mutate_pg cluster.yaml "      - host payments payments all scram-sha-256
-" ""
-mutate_pg cluster.yaml "      - host all all all reject" "      - host all all all scram-sha-256"
-mutate_pg cluster.yaml "      - host payments payments all" "      - host orders payments all"
-mutate_pg cluster.yaml "superuser: false" "superuser: true"
-mutate_pg databases.yaml "  owner: payments" "  owner: orders"
-mutate_pg databases.yaml "  name: pricing" "  name: orders"
-mutate_pg externalsecrets.yaml "key: opop/dev/payments/db" "key: opop/dev/orders/db"
-mutate_pg externalsecrets.yaml "name: payments-db" "name: shared-db"
-mutate_pg pooler.yaml "type: rw" "type: ro"
-pass "self-test: 9 isolation mutations all detected"
+MUTATIONS=(
+  $'cluster.yaml|      - hostssl payments payments all scram-sha-256\n|'
+  "cluster.yaml|      - host all all all reject|      - host all all all scram-sha-256"
+  "cluster.yaml|      - hostssl payments payments all|      - hostssl orders payments all"
+  "cluster.yaml|      - hostssl payments payments|      - host payments payments"
+  "cluster.yaml|superuser: false|superuser: true"
+  "cluster.yaml|        name: orders-db|        name: payments-db"
+  "cluster.yaml|postgresql:16.4|postgresql:latest"
+  "cluster.yaml|connectionLimit: 30|connectionLimit: 20"
+  "databases.yaml|  owner: payments|  owner: orders"
+  "databases.yaml|  name: pricing|  name: orders"
+  "externalsecrets.yaml|key: opop/dev/payments/db|key: opop/dev/orders/db"
+  "externalsecrets.yaml|name: payments-db|name: shared-db"
+  "externalsecrets.yaml|username: \"{{ .user }}\"|username: \"hunter2\""
+  "externalsecrets.yaml|DB_USER: \"{{ .user }}\"|DB_USER: \"{{ .url }}\""
+  "externalsecrets.yaml|DB_MIGRATION_URL: \"{{ .migration_url }}\"|DB_MIGRATION_URL: \"{{ .url }}\""
+  "externalsecrets.yaml|name: cloud-secrets|name: other-store"
+  "pooler.yaml|type: rw|type: ro"
+  "pooler.yaml|poolMode: transaction|poolMode: session"
+  "pooler.yaml|instances: 2|instances: 0"
+  "pooler.yaml|default_pool_size: \"10\"|default_pool_size: \"500\""
+  "pooler.yaml|max_prepared_statements: \"100\"|max_prepared_statements: \"0\""
+  "pooler.yaml|pgbouncer:1.24.1|pgbouncer:1.20.1"
+)
+for m in "${MUTATIONS[@]}"; do mutate_pg "$m"; done
+pass "self-test: ${#MUTATIONS[@]} isolation mutations all detected"
 
 BAD="$(render --set database.enabled=true --set database.secretName=orders-db \
   | perl -0pe 's/( *)valueFrom:\n\s+secretKeyRef:\n\s+name: [^\n]+\n\s+key: [^\n]+/$1value: plain/g')"
-! py chart orders-db <<<"$BAD" >/dev/null || fail "chart check missed a plaintext DB env mutation"
+! py chart orders-db DB_URL DB_USER DB_PASSWORD <<<"$BAD" >/dev/null || fail "chart check missed a plaintext DB env mutation"
 pass "self-test: chart secretKeyRef check detects plaintext values"
 echo "validate-postgres: all checks passed"
