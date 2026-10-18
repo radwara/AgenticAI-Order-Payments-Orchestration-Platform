@@ -5,12 +5,12 @@
 
 MODULE_DIRS := services libs
 
-.PHONY: all build test lint help dev-up dev-down
+.PHONY: all build test lint help dev-up dev-down dev-verify-down
 
 all: build
 
 help:
-	@echo "Targets: build test lint (each iterates services/* and libs/*); dev-up dev-down (local stack)"
+	@echo "Targets: build test lint (each iterates services/* and libs/*); dev-up dev-down dev-verify-down (local stack)"
 
 build test lint:
 	@fail=0; \
@@ -36,3 +36,8 @@ dev-up:
 
 dev-down:
 	$(LOCAL_COMPOSE) down --remove-orphans --volumes
+	deploy/local/verify-down.sh
+
+# Fails if the stack's ports (5432/9092/6379 by default) are still bound on 127.0.0.1.
+dev-verify-down:
+	deploy/local/verify-down.sh
