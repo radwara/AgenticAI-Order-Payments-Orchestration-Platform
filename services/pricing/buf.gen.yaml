@@ -1,0 +1,8 @@
+version: v2
+plugins:
+  - local: bin/protoc-gen-go
+    out: .
+    opt: module=github.com/radwara/agentic-order-platform/services/pricing
+  - local: bin/protoc-gen-go-grpc
+    out: .
+    opt: module=github.com/radwara/agentic-order-platform/services/pricing

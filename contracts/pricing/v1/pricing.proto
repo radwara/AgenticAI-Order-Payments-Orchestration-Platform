@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package pricing.v1;
+
+option go_package = "github.com/radwara/agentic-order-platform/services/pricing/gen/pricingv1;pricingv1";
+
+// Pricing computes deterministic quotes: the same request and versions always
+// produce the same response bytes and quote_hash.
+service Pricing {
+  // Quote prices the line items against a versioned price list and promotion
+  // rule set. Errors: INVALID_ARGUMENT (empty/invalid items, quantity <= 0,
+  // mixed currencies, price mismatch), NOT_FOUND (unknown price list version,
+  // promotion rule version or SKU). Idempotent and side-effect free.
+  rpc Quote(QuoteRequest) returns (QuoteResponse);
+}
+
+message LineItem {
+  string sku = 1;
+  int64 quantity = 2;
+  // Optional assertion of the list price in minor units; 0 means unset.
+  // When set it must equal the price list price.
+  int64 unit_price_minor = 3;
+  // Optional ISO-4217 code; empty means unset. When set it must equal the
+  // price list currency.
+  string currency = 4;
+}
+
+message QuoteRequest {
+  repeated LineItem items = 1;
+  string price_list_version = 2;
+  // Empty means no promotions are applied.
+  string promotion_rule_version = 3;
+}
+
+message LineTotal {
+  string sku = 1;
+  int64 quantity = 2;
+  int64 unit_price_minor = 3;
+  int64 line_total_minor = 4;
+}
+
+message DiscountLine {
+  string rule_id = 1;
+  string sku = 2;
+  // Positive minor units subtracted from the total.
+  int64 amount_minor = 3;
+}
+
+message QuoteResponse {
+  // Sorted canonically (sku, quantity, unit price), not in request order.
+  repeated LineTotal lines = 1;
+  repeated DiscountLine discounts = 2;
+  int64 total_minor = 3;
+  string currency = 4;
+  string price_list_version = 5;
+  string promotion_rule_version = 6;
+  // Hex SHA-256 over the canonical request and versions.
+  string quote_hash = 7;
+}
