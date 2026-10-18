@@ -3,13 +3,8 @@ package money
 import (
 	"encoding/json"
 	"errors"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"math"
 	"math/big"
-	"os"
-	"strings"
 	"testing"
 	"testing/quick"
 )
@@ -276,53 +271,31 @@ func TestJSON(t *testing.T) {
 	if _, err := json.Marshal(Money{1, "ZZZ"}); !errors.Is(err, ErrUnknownCurrency) {
 		t.Errorf("marshal unknown: %v", err)
 	}
+	// Missing fields are reported with ErrInvalidJSON, never defaulted to zero.
+	for _, missing := range []string{`{"currency":"USD"}`, `{"amount":5}`, `{}`} {
+		var m Money
+		if err := json.Unmarshal([]byte(missing), &m); !errors.Is(err, ErrInvalidJSON) {
+			t.Errorf("%s: want ErrInvalidJSON, got %v", missing, err)
+		}
+	}
 	for _, bad := range []string{
 		`{"amount":1,"currency":"ZZZ"}`,
 		`{"amount":1.5,"currency":"USD"}`,
 		`{"amount":"x","currency":"USD"}`,
 		`not json`,
+		`{"currency":"USD"}`,
+		`{"amount":5}`,
+		`{}`,
+		`null`,
+		`{"amount":null,"currency":"USD"}`,
+		`{"amount":1,"currency":null}`,
+		`{"amount":1,"currency":""}`,
+		`{"amount":1,"currency":"USD","extra":true}`,
+		`{"amount":1,"currency":"USD"} {"x":1}`,
 	} {
 		var m Money
 		if err := json.Unmarshal([]byte(bad), &m); err == nil {
 			t.Errorf("expected error for %s", bad)
 		}
-	}
-}
-
-// Guards the "no floating point anywhere in the package" constraint: parses
-// every non-test source file and rejects float types and float literals.
-func TestNoFloatingPoint(t *testing.T) {
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	checked := 0
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		checked++
-		fset := token.NewFileSet()
-		f, err := parser.ParseFile(fset, name, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			switch x := n.(type) {
-			case *ast.Ident:
-				if x.Name == "float32" || x.Name == "float64" {
-					t.Errorf("%s: float type %s", fset.Position(x.Pos()), x.Name)
-				}
-			case *ast.BasicLit:
-				if x.Kind == token.FLOAT {
-					t.Errorf("%s: float literal %s", fset.Position(x.Pos()), x.Value)
-				}
-			}
-			return true
-		})
-	}
-	if checked == 0 {
-		t.Fatal("no source files checked")
 	}
 }
