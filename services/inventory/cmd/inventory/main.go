@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
@@ -20,7 +21,10 @@ import (
 	inventoryv1 "github.com/radwara/agenticai-order-payments-orchestration-platform/services/inventory/inventorypb/v1"
 )
 
-const defaultListenAddr = ":9090"
+const (
+	defaultListenAddr = ":9090"
+	pingTimeout       = 5 * time.Second
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -42,6 +46,11 @@ func run() error {
 		return fmt.Errorf("connect database: %w", err)
 	}
 	defer pool.Close()
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
+		return fmt.Errorf("ping database: %w", err)
+	}
 
 	addr := cmp.Or(os.Getenv("LISTEN_ADDR"), defaultListenAddr)
 	lis, err := net.Listen("tcp", addr)

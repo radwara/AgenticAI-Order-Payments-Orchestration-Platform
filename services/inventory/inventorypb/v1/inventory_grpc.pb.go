@@ -30,11 +30,10 @@ const (
 // InventoryService is the internal gRPC API for stock levels (SPEC-04, INV-1).
 type InventoryServiceClient interface {
 	// SetStock upserts on_hand for a SKU at a location; idempotent.
-	// INVALID_ARGUMENT if on_hand is negative or below reserved.
-	SetStock(ctx context.Context, in *SetStockRequest, opts ...grpc.CallOption) (*SetStockResponse, error)
-	// GetStock returns the stock level for a SKU at a location.
-	// NOT_FOUND if no stock row exists.
-	GetStock(ctx context.Context, in *GetStockRequest, opts ...grpc.CallOption) (*GetStockResponse, error)
+	// INVALID_ARGUMENT if the key is invalid or on_hand is negative or below reserved.
+	SetStock(ctx context.Context, in *SetStockRequest, opts ...grpc.CallOption) (*StockLevel, error)
+	// GetStock returns the stock level. NOT_FOUND if no stock row exists.
+	GetStock(ctx context.Context, in *GetStockRequest, opts ...grpc.CallOption) (*StockLevel, error)
 }
 
 type inventoryServiceClient struct {
@@ -45,9 +44,9 @@ func NewInventoryServiceClient(cc grpc.ClientConnInterface) InventoryServiceClie
 	return &inventoryServiceClient{cc}
 }
 
-func (c *inventoryServiceClient) SetStock(ctx context.Context, in *SetStockRequest, opts ...grpc.CallOption) (*SetStockResponse, error) {
+func (c *inventoryServiceClient) SetStock(ctx context.Context, in *SetStockRequest, opts ...grpc.CallOption) (*StockLevel, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SetStockResponse)
+	out := new(StockLevel)
 	err := c.cc.Invoke(ctx, InventoryService_SetStock_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -55,9 +54,9 @@ func (c *inventoryServiceClient) SetStock(ctx context.Context, in *SetStockReque
 	return out, nil
 }
 
-func (c *inventoryServiceClient) GetStock(ctx context.Context, in *GetStockRequest, opts ...grpc.CallOption) (*GetStockResponse, error) {
+func (c *inventoryServiceClient) GetStock(ctx context.Context, in *GetStockRequest, opts ...grpc.CallOption) (*StockLevel, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetStockResponse)
+	out := new(StockLevel)
 	err := c.cc.Invoke(ctx, InventoryService_GetStock_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -72,11 +71,10 @@ func (c *inventoryServiceClient) GetStock(ctx context.Context, in *GetStockReque
 // InventoryService is the internal gRPC API for stock levels (SPEC-04, INV-1).
 type InventoryServiceServer interface {
 	// SetStock upserts on_hand for a SKU at a location; idempotent.
-	// INVALID_ARGUMENT if on_hand is negative or below reserved.
-	SetStock(context.Context, *SetStockRequest) (*SetStockResponse, error)
-	// GetStock returns the stock level for a SKU at a location.
-	// NOT_FOUND if no stock row exists.
-	GetStock(context.Context, *GetStockRequest) (*GetStockResponse, error)
+	// INVALID_ARGUMENT if the key is invalid or on_hand is negative or below reserved.
+	SetStock(context.Context, *SetStockRequest) (*StockLevel, error)
+	// GetStock returns the stock level. NOT_FOUND if no stock row exists.
+	GetStock(context.Context, *GetStockRequest) (*StockLevel, error)
 	mustEmbedUnimplementedInventoryServiceServer()
 }
 
@@ -87,10 +85,10 @@ type InventoryServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedInventoryServiceServer struct{}
 
-func (UnimplementedInventoryServiceServer) SetStock(context.Context, *SetStockRequest) (*SetStockResponse, error) {
+func (UnimplementedInventoryServiceServer) SetStock(context.Context, *SetStockRequest) (*StockLevel, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetStock not implemented")
 }
-func (UnimplementedInventoryServiceServer) GetStock(context.Context, *GetStockRequest) (*GetStockResponse, error) {
+func (UnimplementedInventoryServiceServer) GetStock(context.Context, *GetStockRequest) (*StockLevel, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetStock not implemented")
 }
 func (UnimplementedInventoryServiceServer) mustEmbedUnimplementedInventoryServiceServer() {}

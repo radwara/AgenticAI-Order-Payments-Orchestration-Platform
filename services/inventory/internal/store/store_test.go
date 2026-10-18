@@ -19,14 +19,11 @@ import (
 	"github.com/radwara/agenticai-order-payments-orchestration-platform/services/inventory/internal/store"
 )
 
-const (
-	migrationsURL  = "file://../../migrations"
-	checkViolation = "23514"
-	startTimeout   = 90 * time.Second
-)
+const startTimeout = 90 * time.Second
 
-// startPostgres returns a clean Postgres DSN. No Docker: skip locally, fail when CI=true.
-func startPostgres(t *testing.T) string {
+// setup starts a clean Postgres and returns a pool plus the migrator. No Docker:
+// skip locally, fail when CI=true so CI never silently skips.
+func setup(t *testing.T) (*pgxpool.Pool, *migrate.Migrate) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
 	defer cancel()
@@ -45,86 +42,62 @@ func startPostgres(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("connection string: %v", err)
 	}
-	return dsn
-}
-
-func newPool(t *testing.T, dsn string) *pgxpool.Pool {
-	t.Helper()
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
-}
-
-func newMigrate(t *testing.T, dsn string) *migrate.Migrate {
-	t.Helper()
-	m, err := migrate.New(migrationsURL, "pgx5"+dsn[len("postgres"):])
+	m, err := migrate.New("file://../../migrations", "pgx5"+dsn[len("postgres"):])
 	if err != nil {
 		t.Fatalf("migrate.New: %v", err)
 	}
 	t.Cleanup(func() { _, _ = m.Close() })
-	return m
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool, m
 }
 
-func migratedPool(t *testing.T) *pgxpool.Pool {
+func migrated(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := startPostgres(t)
-	if err := newMigrate(t, dsn).Up(); err != nil {
+	pool, m := setup(t)
+	if err := m.Up(); err != nil {
 		t.Fatalf("migrate up: %v", err)
 	}
-	return newPool(t, dsn)
-}
-
-func stockTableExists(t *testing.T, pool *pgxpool.Pool) bool {
-	t.Helper()
-	var exists bool
-	err := pool.QueryRow(context.Background(), `SELECT to_regclass('public.stock') IS NOT NULL`).Scan(&exists)
-	if err != nil {
-		t.Fatalf("table check: %v", err)
-	}
-	return exists
+	return pool
 }
 
 func TestMigration_UpThenDownSucceedsOnCleanDatabase(t *testing.T) {
-	dsn := startPostgres(t)
-	m, pool := newMigrate(t, dsn), newPool(t, dsn)
-
-	if err := m.Up(); err != nil || !stockTableExists(t, pool) {
+	pool, m := setup(t)
+	exists := func() (ok bool) {
+		err := pool.QueryRow(context.Background(), `SELECT to_regclass('public.stock') IS NOT NULL`).Scan(&ok)
+		if err != nil {
+			t.Fatalf("table check: %v", err)
+		}
+		return ok
+	}
+	if err := m.Up(); err != nil || !exists() {
 		t.Fatalf("up failed or stock table missing: err=%v", err)
 	}
-	if err := m.Down(); err != nil || stockTableExists(t, pool) {
+	if err := m.Down(); err != nil || exists() {
 		t.Fatalf("down failed or stock table still present: err=%v", err)
 	}
 }
 
 func TestStockConstraint_RejectsInvalidRows(t *testing.T) {
-	pool := migratedPool(t)
-	tests := []struct {
-		name             string
-		onHand, reserved int64
-	}{
-		{"reserved_greater_than_on_hand", 5, 6},
-		{"negative_reserved", 5, -1},
-		{"negative_on_hand", -1, 0},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := pool.Exec(context.Background(),
-				`INSERT INTO stock (sku, location, on_hand, reserved) VALUES ($1, 'wh1', $2, $3)`,
-				tc.name, tc.onHand, tc.reserved)
-			var pgErr *pgconn.PgError
-			if !errors.As(err, &pgErr) || pgErr.Code != checkViolation {
-				t.Fatalf("want check violation %s, got %v", checkViolation, err)
-			}
-		})
+	pool := migrated(t)
+	for name, v := range map[string][2]int64{
+		"reserved_greater_than_on_hand": {5, 6}, "negative_reserved": {5, -1}, "negative_on_hand": {-1, 0},
+	} {
+		_, err := pool.Exec(context.Background(),
+			`INSERT INTO stock (sku, location, on_hand, reserved) VALUES ($1, 'wh1', $2, $3)`, name, v[0], v[1])
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+			t.Errorf("%s: want check violation 23514, got %v", name, err)
+		}
 	}
 }
 
 func TestStore_SetThenGetRoundTrips(t *testing.T) {
 	ctx := context.Background()
-	s := store.New(migratedPool(t))
+	s := store.New(migrated(t))
 
 	set, err := s.SetStock(ctx, "SKU-1", "wh1", 10)
 	if err != nil {
@@ -139,24 +112,20 @@ func TestStore_SetThenGetRoundTrips(t *testing.T) {
 	}
 }
 
-func TestStore_GetUnknownSkuIsNotFound(t *testing.T) {
-	_, err := store.New(migratedPool(t)).GetStock(context.Background(), "NOPE", "wh1")
-	if !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("want ErrNotFound, got %v", err)
-	}
-}
-
-func TestStore_SetBelowReservedOrNegativeIsInvalid(t *testing.T) {
+func TestStore_ErrorsAreMapped(t *testing.T) {
 	ctx := context.Background()
-	pool := migratedPool(t)
+	pool := migrated(t)
 	s := store.New(pool)
 	if _, err := pool.Exec(ctx, `INSERT INTO stock (sku, location, on_hand, reserved) VALUES ('R', 'wh1', 10, 8)`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
+	if _, err := s.GetStock(ctx, "NOPE", "wh1"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("unknown sku: want ErrNotFound, got %v", err)
+	}
 	if _, err := s.SetStock(ctx, "R", "wh1", 7); !errors.Is(err, store.ErrInvalidStock) {
-		t.Fatalf("below reserved: want ErrInvalidStock, got %v", err)
+		t.Errorf("below reserved: want ErrInvalidStock, got %v", err)
 	}
 	if _, err := s.SetStock(ctx, "NEG", "wh1", -1); !errors.Is(err, store.ErrInvalidStock) {
-		t.Fatalf("negative: want ErrInvalidStock, got %v", err)
+		t.Errorf("negative: want ErrInvalidStock, got %v", err)
 	}
 }
