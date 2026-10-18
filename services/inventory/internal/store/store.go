@@ -15,6 +15,9 @@ import (
 // pgCheckViolation is the SQLSTATE for a violated CHECK constraint.
 const pgCheckViolation = "23514"
 
+// QueryTimeout bounds each query on top of the caller's deadline.
+const QueryTimeout = 5 * time.Second
+
 var (
 	// ErrNotFound: no stock row for the SKU and location.
 	ErrNotFound = errors.New("stock not found")
@@ -50,34 +53,37 @@ FROM stock WHERE sku = $1 AND location = $2`
 )
 
 // SetStock upserts on_hand for the SKU and location and returns the new row.
-// Reserved is untouched. It returns ErrInvalidStock if the value is negative or
-// below reserved. Idempotent for the quantity; the version still bumps.
+// Reserved is untouched. ErrInvalidStock if the value is negative or below
+// reserved. Idempotent for the quantity; the version still bumps.
 func (s *Store) SetStock(ctx context.Context, sku, location string, onHand int64) (Stock, error) {
-	st, err := scan(s.db.QueryRow(ctx, setStockSQL, sku, location, onHand))
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgCheckViolation {
-			return Stock{}, fmt.Errorf("set stock %s/%s: %w", sku, location, ErrInvalidStock)
-		}
-		return Stock{}, fmt.Errorf("set stock %s/%s: %w", sku, location, err)
+	st, err := s.one(ctx, setStockSQL, sku, location, onHand)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == pgCheckViolation {
+		err = ErrInvalidStock
 	}
-	return st, nil
+	return st, wrap("set stock", err)
 }
 
 // GetStock returns the row for the SKU and location, or ErrNotFound.
 func (s *Store) GetStock(ctx context.Context, sku, location string) (Stock, error) {
-	st, err := scan(s.db.QueryRow(ctx, getStockSQL, sku, location))
+	st, err := s.one(ctx, getStockSQL, sku, location)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Stock{}, fmt.Errorf("get stock %s/%s: %w", sku, location, ErrNotFound)
+		err = ErrNotFound
 	}
-	if err != nil {
-		return Stock{}, fmt.Errorf("get stock %s/%s: %w", sku, location, err)
-	}
-	return st, nil
+	return st, wrap("get stock", err)
 }
 
-func scan(row pgx.Row) (Stock, error) {
+func (s *Store) one(ctx context.Context, sql string, args ...any) (Stock, error) {
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
+	defer cancel()
 	var st Stock
-	err := row.Scan(&st.SKU, &st.Location, &st.OnHand, &st.Reserved, &st.Version, &st.UpdatedAt)
+	err := s.db.QueryRow(ctx, sql, args...).Scan(&st.SKU, &st.Location, &st.OnHand, &st.Reserved, &st.Version, &st.UpdatedAt)
 	return st, err
+}
+
+func wrap(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", op, err)
 }
