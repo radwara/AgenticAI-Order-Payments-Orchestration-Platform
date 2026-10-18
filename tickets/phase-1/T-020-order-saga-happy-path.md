@@ -25,4 +25,4 @@ Compensation (T-021), timeouts/circuit breakers, fulfilment.
 `services/order/**`, `deploy/local/**`, `Makefile`
 
 ## Depends on
-T-006, T-008, T-016, T-014, T-012
+T-006, T-008, T-016, T-014, T-012, T-023
