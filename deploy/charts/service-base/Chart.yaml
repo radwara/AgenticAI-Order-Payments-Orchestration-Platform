@@ -1,0 +1,5 @@
+apiVersion: v2
+name: service-base
+description: Library chart encoding the platform workload standards (PRD 9.2).
+type: library
+version: 0.1.0
