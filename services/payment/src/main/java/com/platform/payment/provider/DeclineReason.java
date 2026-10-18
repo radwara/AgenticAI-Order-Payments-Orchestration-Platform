@@ -8,5 +8,9 @@ public enum DeclineReason {
   AMOUNT_EXCEEDS_CAPTURE,
   CURRENCY_MISMATCH,
   UNKNOWN_REFERENCE,
-  INVALID_STATE
+  INVALID_STATE,
+  /** A null, blank or non-positive argument. */
+  INVALID_ARGUMENT,
+  /** The idempotency key was already used with different arguments. */
+  IDEMPOTENCY_KEY_REUSED
 }
