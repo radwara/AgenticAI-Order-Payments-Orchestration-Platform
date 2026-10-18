@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
@@ -37,12 +38,11 @@ import org.springframework.web.client.RestClient;
 class ObservabilityTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
-  private static final String SECRET = "db-password-hunter2";
   private static final HttpClient HTTP = HttpClient.newHttpClient();
 
   @SpringBootConfiguration
   @EnableAutoConfiguration
-  @Import({Hop.class, ToggleCheck.class})
+  @Import(Hop.class)
   static class App {}
 
   @RestController
@@ -73,22 +73,6 @@ class ObservabilityTest {
               .retrieve()
               .body(String.class);
       return Map.of("own", own, "remote", remote);
-    }
-  }
-
-  static class ToggleCheck implements DependencyCheck {
-    volatile boolean healthy = true;
-
-    @Override
-    public String name() {
-      return "db";
-    }
-
-    @Override
-    public void check() {
-      if (!healthy) {
-        throw new IllegalStateException("connect failed: " + SECRET);
-      }
     }
   }
 
@@ -169,32 +153,14 @@ class ObservabilityTest {
     }
   }
 
-  @Test
-  void readiness_is_503_when_a_dependency_fails_and_up_when_it_recovers() throws Exception {
-    try (ConfigurableApplicationContext ctx = start("svc-ready", "")) {
-      ToggleCheck check = ctx.getBean(ToggleCheck.class);
-      String ready = base(ctx) + "/actuator/health/readiness";
-
-      assertThat(get(ready).statusCode()).isEqualTo(200);
-
-      check.healthy = false;
-      HttpResponse<String> down = get(ready);
-      assertThat(down.statusCode()).isEqualTo(503);
-      assertThat(down.body()).doesNotContain(SECRET);
-      assertThat(get(base(ctx) + "/actuator/health/liveness").statusCode()).isEqualTo(200);
-
-      check.healthy = true;
-      assertThat(get(ready).statusCode()).isEqualTo(200);
-    }
-  }
-
   @ParameterizedTest
   @ValueSource(strings = {"", "not a url", "ftp://host", "http://127.0.0.1:1"})
   void starts_without_a_usable_otlp_endpoint(String endpoint) throws Exception {
+    long begin = System.nanoTime();
     try (ConfigurableApplicationContext ctx = start("svc-none", endpoint)) {
       assertThat(get(base(ctx) + "/ping").body()).matches("[0-9a-f]{32}");
-      assertThat(get(base(ctx) + "/actuator/health/readiness").statusCode()).isEqualTo(200);
     }
+    assertThat(Duration.ofNanos(System.nanoTime() - begin)).isLessThan(Duration.ofSeconds(20));
   }
 
   private static JsonNode readQuietly(String line) {

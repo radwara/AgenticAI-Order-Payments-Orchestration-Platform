@@ -13,8 +13,7 @@ import org.springframework.core.env.MapPropertySource;
 
 /**
  * Adds lowest-precedence defaults (application config always wins): OTLP trace export driven by
- * {@code OTEL_EXPORTER_OTLP_ENDPOINT}, health probes with dependency checks in readiness, always
- * sampled traces, and JSON console logs with trace_id.
+ * {@code OTEL_EXPORTER_OTLP_ENDPOINT}, always sampled traces, and JSON console logs with trace_id.
  */
 public class ObsEnvironmentPostProcessor implements EnvironmentPostProcessor {
 
@@ -42,10 +41,6 @@ public class ObsEnvironmentPostProcessor implements EnvironmentPostProcessor {
             new MapPropertySource(
                 "java-obs-defaults",
                 Map.of(
-                    "management.endpoint.health.probes.enabled",
-                    "true",
-                    "management.endpoint.health.group.readiness.include",
-                    "readinessState,dependencies",
                     "management.tracing.sampling.probability",
                     "1.0",
                     "logging.structured.format.console",
