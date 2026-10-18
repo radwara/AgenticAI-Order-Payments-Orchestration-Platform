@@ -1,0 +1,8 @@
+{
+  "version": "promo-v1",
+  "rules": [
+    {"id": "PCT-12-5", "sku": "SKU-A", "type": "percentage_off", "basis_points": 1250},
+    {"id": "FIX-300", "sku": "SKU-B", "type": "fixed_off", "amount_minor": 300},
+    {"id": "FIX-HUGE", "sku": "SKU-C", "type": "fixed_off", "amount_minor": 100000}
+  ]
+}
