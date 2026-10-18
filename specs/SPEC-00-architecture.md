@@ -9,6 +9,14 @@
 - Money: integer minor units + ISO-4217 code. Never floats.
 - Every service: health/readiness endpoints, OpenTelemetry traces/metrics/logs, structured JSON logs, config from env.
 
+## Decision: database (ADR-001, accepted)
+- **PostgreSQL** for all services' transactional data (PRD §8). Services need row locks, constraints, `SKIP LOCKED`, triggers and jsonb.
+- **Production:** managed Postgres from the chosen cloud (RDS/Aurora, Cloud SQL/AlloyDB or Azure Database for PostgreSQL), private networking, credentials via External Secrets, connection pooler (PgBouncer or cloud proxy) in front. Databases are not run inside the cluster in v1.
+- **Dev/staging:** Docker Compose locally (T-003); CloudNativePG operator is an optional in-cluster alternative.
+- **Layout:** one instance to start with a separate database and user per service; no shared tables or credentials. Payments moves to its own instance first.
+- **Migrations:** Flyway (Java) and golang-migrate (Go), run by the CI/CD pipeline, not at pod startup.
+- **Cloud provider:** still open; no code depends on it.
+
 ## Phase 1 scope (this repo's first milestone)
 Walking skeleton: Pricing, Inventory, Order (with saga), Payment (mock provider + ledger) running locally and deployable via a base Helm chart. Gateway/identity/tenant, webhooks, real providers, multi-region come in later phases (see `docs/roadmap.md`).
 
