@@ -5,12 +5,12 @@
 
 MODULE_DIRS := services libs
 
-.PHONY: all build test lint help
+.PHONY: all build test lint help dev-up dev-down
 
 all: build
 
 help:
-	@echo "Targets: build test lint (each iterates services/* and libs/*)"
+	@echo "Targets: build test lint (each iterates services/* and libs/*); dev-up dev-down (local stack)"
 
 build test lint:
 	@fail=0; \
@@ -26,3 +26,13 @@ build test lint:
 	  done; \
 	done; \
 	exit $$fail
+
+# Local dev stack (Postgres, Kafka, Redis). Fake local-only creds in deploy/local/.env.example.
+LOCAL_COMPOSE := docker compose -f deploy/local/docker-compose.yml --env-file deploy/local/.env.example
+
+dev-up:
+	$(LOCAL_COMPOSE) up -d --wait --remove-orphans
+	deploy/local/verify.sh
+
+dev-down:
+	$(LOCAL_COMPOSE) down --remove-orphans --volumes
